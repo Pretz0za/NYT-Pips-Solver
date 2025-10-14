@@ -1,64 +1,103 @@
 #ifndef PIPS_SOLVER_HPP
 #define PIPS_SOLVER_HPP
 
-#include <vector>
-#include <tuple>
 #include <initializer_list>
+#include <vector>
 
 struct Position {
-	int x;
-	int y;
+  int x;
+  int y;
 };
 
 class Domino {
-	std::tuple<int> value;
-	Position position;
-	// 4 possible orientations give us:
-	std::tuple<bool> orientation;
-public:
-	
-	Domino(std::tuple<int> values, Position position, std::tuple<bool> orientaion);
+  std::pair<int, int> value;
+  Position position;
+  // 4 possible orientations give us:
+  std::pair<bool, bool> orientation;
 
-	// Returns the value of the given domino face, i.e. value[index]
-	int getFace(int index) const;
-	~Domino() = default;
+public:
+  Domino(std::pair<int, int> value);
+
+  void setPosition(const Position &newPosition);
+  void setOrientation(const std::pair<bool, bool> &newOrientation);
+
+  // Returns the values of the domino
+  std::pair<int, int> getValues() const;
+
+  // Returns the positions of both faces in a pair based on orientation
+  std::pair<Position, Position> getPosition() const;
+
+  ~Domino() = default;
 };
 
 class Tile {
-	int value;
+  int value;
+
 public:
+  Tile(int value = -1);
 
-	Tile(int value = -1);
+  // gets/sets the value of the tile and errors if the tile is out of play
+  int getValue() const;
+  void setValue(int newValue);
 
-	// gets/sets the value of the tile and errors if the tile is out of play
-	int getValue() const;
-	int setValue(int newValue) const;
-
-	~Tile() = default;
+  ~Tile() = default;
 };
 
 class Constraint {
-	std::vector<Position> tiles;
+protected:
+  std::vector<Position> tiles;
 
 public:
-	std::vector<Position> getTiles();
-	virtual bool evaluate(std::initializer_list<int> values) const;
-	virtual ~Constraint() = default;
+  Constraint(std::vector<Position> tiles);
+
+  std::vector<Position> getTiles() const;
+  virtual bool evaluate(std::initializer_list<int> values) const;
+
+  virtual ~Constraint() = default;
+};
+
+class EqualConstraint : public Constraint {
+public:
+  EqualConstraint(std::vector<Position> tiles);
+  bool evaluate(std::initializer_list<int> values) const override;
+};
+
+class UniqueConstraint : public Constraint {
+public:
+  UniqueConstraint(std::vector<Position> tiles);
+  bool evaluate(std::initializer_list<int> values) const override;
+};
+
+class LessThanConstraint : public Constraint {
+  int limit;
+
+public:
+  LessThanConstraint(std::vector<Position> tiles, int limit);
+  bool evaluate(std::initializer_list<int> values) const override;
+};
+
+class GreaterThanConstraint : public Constraint {
+  int limit;
+
+public:
+  GreaterThanConstraint(std::vector<Position> tiles, int limit);
+  bool evaluate(std::initializer_list<int> values) const override;
 };
 
 class PipsState {
-	std::vector<std::vector<Tile>> grid;
-	std::vector<Domino*> dominos;
-	const std::vector<Constraint> constraints;
+  std::vector<std::vector<Tile>> grid;
+  std::vector<Domino *> dominos;
+  const std::vector<Constraint> constraints;
 
 public:
-	PipsState();
+  PipsState(int width, int height, std::vector<Position> disabledTiles,
+            std::vector<std::pair<int, int>> dominos, std::vector<Constraint>);
 
-	bool isSolved() const;
-	std::vector<PipsState> makeNeighbors() const;
-	int objective() const;
+  bool isSolved() const;
+  std::vector<PipsState> makeNeighbors() const;
+  int objective() const;
 
-	~PipsState() = default;
+  ~PipsState() = default;
 };
 
 #endif
