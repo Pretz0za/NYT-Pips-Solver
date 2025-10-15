@@ -2,6 +2,7 @@
 #define PIPS_SOLVER_HPP
 
 #include <initializer_list>
+#include <memory>
 #include <vector>
 
 struct Position {
@@ -20,6 +21,9 @@ public:
 
   void setPosition(const Position &newPosition);
   void setOrientation(const std::pair<bool, bool> &newOrientation);
+
+  void rotate();
+  void swap(Domino &other);
 
   // Returns the values of the domino
   std::pair<int, int> getValues() const;
@@ -86,12 +90,17 @@ public:
 
 class PipsState {
   std::vector<std::vector<Tile>> grid;
-  std::vector<Domino *> dominos;
-  const std::vector<Constraint> constraints;
+  std::vector<Domino> dominos;
+  std::shared_ptr<const std::vector<Constraint>> constraints;
 
 public:
   PipsState(int width, int height, std::vector<Position> disabledTiles,
-            std::vector<std::pair<int, int>> dominos, std::vector<Constraint>);
+            std::vector<Domino> dominos,
+            std::shared_ptr<std::vector<Constraint>> constraints);
+
+  void rotateDomino(int index);
+  void swapDominos(int first, int second);
+  void placeDomino(const Domino &domino);
 
   bool isSolved() const;
   std::vector<PipsState> makeNeighbors() const;
