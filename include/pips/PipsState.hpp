@@ -1,6 +1,7 @@
 #ifndef PIPS_STATE_HPP
 #define PIPS_STATE_HPP
 
+#include <array>
 #include <initializer_list>
 #include <memory>
 #include <vector>
@@ -45,6 +46,19 @@ public:
   void setValue(int newValue);
 
   ~Tile() = default;
+};
+
+template <int Width, int Height> class Grid {
+  std::array<std::array<Tile, Width>, Height> grid;
+
+public:
+  Grid(const std::vector<Position> &disabledTiles);
+  std::array<std::array<Tile, Width>, Height> getGrid() const;
+
+  Tile &operator[](const Position &pos);
+  const Tile &operator[](const Position &pos) const;
+
+  ~Grid() = default;
 };
 
 class Constraint {
@@ -96,8 +110,8 @@ struct PipsAction {
   int second;
 };
 
-class PipsState {
-  std::vector<std::vector<Tile>> grid;
+template <int Width, int Height> class PipsState {
+  Grid<Width, Height> grid;
   std::vector<Domino> dominos;
   std::shared_ptr<const std::vector<Constraint>> constraints;
 
@@ -106,8 +120,7 @@ class PipsState {
   void placeDomino(const Domino &domino);
 
 public:
-  PipsState(int width, int height, std::vector<Position> disabledTiles,
-            std::vector<Domino> dominos,
+  PipsState(std::vector<Position> disabledTiles, std::vector<Domino> dominos,
             std::shared_ptr<std::vector<Constraint>> constraints);
 
   std::vector<PipsAction> availableActions() const;

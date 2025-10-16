@@ -2,7 +2,7 @@
 #include <cstdlib>
 #include <ctime>
 
-PipsSolver::PipsSolver(int width, int height,
+template <int Width, int Height> PipsSolver<Width, Height>::PipsSolver(int width, int height,
                        std::vector<Position> disabledTiles,
                        std::vector<Domino> dominos,
                        std::shared_ptr<std::vector<Constraint>> constraints)
@@ -12,7 +12,7 @@ PipsSolver::PipsSolver(int width, int height,
   srand(time(0));
 }
 
-PipsState PipsSolver::iterate() {
+template <int Width, int Height> PipsState<Width, Height> PipsSolver<Width, Height>::iterate() {
   auto actions = bestFound.availableActions();
   PipsState curr = bestFound;
   for (const auto &action : actions) {

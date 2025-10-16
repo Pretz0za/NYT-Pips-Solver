@@ -108,40 +108,72 @@ bool GreaterThanConstraint::evaluate(std::initializer_list<int> values) const {
 
 // End Constraint Classes ------------------------------------------------------
 
-// PipsState Class -------------------------------------------------------------
+// Grid Class ------------------------------------------------------------------
 
-PipsState::PipsState(int width, int height, std::vector<Position> disabledTiles,
-                     std::vector<Domino> dominos,
-                     std::shared_ptr<std::vector<Constraint>> constraints)
-    : constraints(std::move(constraints)), dominos(std::move(dominos)),
-      grid(height, std::vector<Tile>(width, Tile(-1))) {
-  for (const auto &[x, y] : disabledTiles) {
-    if (x >= width || y >= height)
+template <int Width, int Height>
+
+Grid<Width, Height>::Grid(const std::vector<Position> &disabledTiles) {
+  for (const auto &pos : disabledTiles) {
+    if (pos.x >= Width || pos.y >= Height)
       throw std::runtime_error("Disabled tiles out of bounds");
-    grid[x][y] = -2;
+    *this[pos] = -2;
   }
 }
 
-void PipsState::rotateDomino(int index) {
+template <int Width, int Height>
+Tile &Grid<Width, Height>::operator[](const Position &pos) {
+  if (pos.x >= Width || pos.y >= Height)
+    throw std::runtime_error("Indexed position out of bounds");
+  return grid[pos.x][pos.y];
+}
+
+template <int Width, int Height>
+const Tile &Grid<Width, Height>::operator[](const Position &pos) const {
+  if (pos.x >= Width || pos.y >= Height)
+    throw std::runtime_error("Indexed position out of bounds");
+  return grid[pos.x][pos.y];
+}
+
+template <int Width, int Height>
+std::array<std::array<Tile, Width>, Height> Grid<Width, Height>::getGrid() const {
+	return grid;
+}
+
+// End Grid Class --------------------------------------------------------------
+
+// PipsState Class -------------------------------------------------------------
+
+template <int Width, int Height>
+PipsState<Width, Height>::PipsState(
+    std::vector<Position> disabledTiles, std::vector<Domino> dominos,
+    std::shared_ptr<std::vector<Constraint>> constraints)
+    : constraints(std::move(constraints)), dominos(std::move(dominos)),
+      grid(disabledTiles) {}
+
+template <int Width, int Height>
+void PipsState<Width, Height>::rotateDomino(int index) {
   dominos[index].rotate();
   const auto [pos1, pos2] = dominos[index].getPosition();
   std::swap(grid[pos1.x][pos1.y], grid[pos2.x][pos2.y]);
 }
 
-void PipsState::placeDomino(const Domino &domino) {
+template <int Width, int Height>
+void PipsState<Width, Height>::placeDomino(const Domino &domino) {
   auto [pos1, pos2] = domino.getPosition();
   auto [val1, val2] = domino.getValues();
   grid[pos1.x][pos1.y] = val1;
   grid[pos2.x][pos2.y] = val2;
 }
 
-void PipsState::swapDominos(int first, int second) {
+template <int Width, int Height>
+void PipsState<Width, Height>::swapDominos(int first, int second) {
   dominos[first].swap(dominos[second]);
   placeDomino(dominos[first]);
   placeDomino(dominos[second]);
 }
 
-bool PipsState::isSolved() const {
+template <int Width, int Height>
+bool PipsState<Width, Height>::isSolved() const {
   for (const auto &constraint : *constraints) {
     std::initializer_list<int> values{};
     std::vector<Position> positions = constraint.getTiles();
@@ -154,7 +186,8 @@ bool PipsState::isSolved() const {
   return true;
 }
 
-std::vector<PipsAction> PipsState::availableActions() const {
+template <int Width, int Height>
+std::vector<PipsAction> PipsState<Width, Height>::availableActions() const {
   std::vector<PipsAction> output{};
   for (int i = 0; i < dominos.size(); i++) {
     output.push_back({PipsActionType::Rotate, i, i});
@@ -165,7 +198,9 @@ std::vector<PipsAction> PipsState::availableActions() const {
   return output;
 }
 
-PipsState PipsState::stateAfterAction(const PipsAction &action) const {
+template <int Width, int Height>
+PipsState<Width, Height>
+PipsState<Width, Height>::stateAfterAction(const PipsAction &action) const {
   PipsState output{*this};
   if (action.action == PipsActionType::Swap) {
     output.swapDominos(action.first, action.second);
@@ -175,7 +210,8 @@ PipsState PipsState::stateAfterAction(const PipsAction &action) const {
   return output;
 }
 
-int PipsState::objective() const {
+template <int Width, int Height>
+int PipsState<Width, Height>::objective() const {
   // Could do the following:
   //
   // Return how many TILES break each constraint (Not how many constraints are
@@ -183,7 +219,6 @@ int PipsState::objective() const {
   // equal to whatever. LessThan and GreaterThan Constraints could estimate, get
   // the difference to the limit and divide by 3 (average of domino digits). We
   // drive this to 0.
-	
 }
 
 // End PipsState Class ---------------------------------------------------------
