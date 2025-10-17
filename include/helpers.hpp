@@ -1,9 +1,9 @@
 #ifndef HELPERS_HPP
 #define HELPERS_HPP
 
-#include <initializer_list>
+#include <vector>
 
-int findMode(std::initializer_list<int> values);
-int findRepeatCount(std::initializer_list<int> values);
+int findMode(std::vector<int> values);
+int findRepeatCount(std::vector<int> values);
 
 #endif

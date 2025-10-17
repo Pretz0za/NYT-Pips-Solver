@@ -3,7 +3,7 @@
 #include <set>
 #include <stdexcept>
 
-int findMode(std::initializer_list<int> values) {
+int findMode(std::vector<int> values) {
   if (values.size() == 0)
     throw std::runtime_error("Empty array has no mode.");
   std::map<int, int> counts{};
@@ -20,7 +20,7 @@ int findMode(std::initializer_list<int> values) {
   return mode;
 }
 
-int findRepeatCount(std::initializer_list<int> values) {
+int findRepeatCount(std::vector<int> values) {
 	std::set<int> seen{};
 	int count = 0;
 	for(const auto &num : values){
