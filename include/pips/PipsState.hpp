@@ -69,7 +69,7 @@ public:
   Constraint(std::vector<Position> tiles);
 
   std::vector<Position> getTiles() const;
-  virtual bool evaluate(std::initializer_list<int> values) const;
+  virtual int evaluate(std::initializer_list<int> values) const;
 
   virtual ~Constraint() = default;
 };
@@ -77,13 +77,15 @@ public:
 class EqualConstraint : public Constraint {
 public:
   EqualConstraint(std::vector<Position> tiles);
-  bool evaluate(std::initializer_list<int> values) const override;
+  int evaluate(std::initializer_list<int> values) const override;
+  ~EqualConstraint() = default;
 };
 
 class UniqueConstraint : public Constraint {
 public:
   UniqueConstraint(std::vector<Position> tiles);
-  bool evaluate(std::initializer_list<int> values) const override;
+  int evaluate(std::initializer_list<int> values) const override;
+  ~UniqueConstraint() = default;
 };
 
 class LessThanConstraint : public Constraint {
@@ -91,7 +93,8 @@ class LessThanConstraint : public Constraint {
 
 public:
   LessThanConstraint(std::vector<Position> tiles, int limit);
-  bool evaluate(std::initializer_list<int> values) const override;
+  int evaluate(std::initializer_list<int> values) const override;
+  ~LessThanConstraint() = default;
 };
 
 class GreaterThanConstraint : public Constraint {
@@ -99,7 +102,17 @@ class GreaterThanConstraint : public Constraint {
 
 public:
   GreaterThanConstraint(std::vector<Position> tiles, int limit);
-  bool evaluate(std::initializer_list<int> values) const override;
+  int evaluate(std::initializer_list<int> values) const override;
+  ~GreaterThanConstraint() = default;
+};
+
+class ExactSumConstraint : public Constraint {
+  int target;
+
+public:
+  ExactSumConstraint(std::vector<Position> tiles, int target);
+  int evaluate(std::initializer_list<int> values) const override;
+  ~ExactSumConstraint() = default;
 };
 
 enum PipsActionType { Rotate, Swap };
@@ -122,6 +135,9 @@ template <int Width, int Height> class PipsState {
 public:
   PipsState(std::vector<Position> disabledTiles, std::vector<Domino> dominos,
             std::shared_ptr<std::vector<Constraint>> constraints);
+
+  std::initializer_list<int>
+  getValues(const std::vector<Position> &positions) const;
 
   std::vector<PipsAction> availableActions() const;
   PipsState stateAfterAction(const PipsAction &action) const;

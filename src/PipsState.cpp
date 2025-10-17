@@ -1,8 +1,9 @@
 #include "pips/PipsState.hpp"
+#include "helpers.hpp"
 #include <algorithm>
+#include <cstdlib>
 #include <initializer_list>
 #include <numeric>
-#include <set>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -61,49 +62,49 @@ void Tile::setValue(int newValue) { this->value = newValue; }
 
 Constraint::Constraint(std::vector<Position> tiles) : tiles(std::move(tiles)) {}
 std::vector<Position> Constraint::getTiles() const { return tiles; }
-bool Constraint::evaluate(std::initializer_list<int> values) const {
-  return true;
-}
+int Constraint::evaluate(std::initializer_list<int> values) const { return 0; }
 
 EqualConstraint::EqualConstraint(std::vector<Position> tiles)
     : Constraint(std::move(tiles)) {}
-bool EqualConstraint::evaluate(std::initializer_list<int> values) const {
-  const int *pFirst = nullptr;
+int EqualConstraint::evaluate(std::initializer_list<int> values) const {
+  const int mode = findMode(values);
+  int count = 0;
   for (const int &curr : values) {
-    if (!pFirst) {
-      pFirst = &curr;
-    } else {
-      if (curr != *pFirst)
-        return false;
-    }
+    if (curr != mode)
+      count++;
   }
-  return true;
+  return count;
 }
 
 UniqueConstraint::UniqueConstraint(std::vector<Position> tiles)
     : Constraint(std::move(tiles)) {}
-bool UniqueConstraint::evaluate(std::initializer_list<int> values) const {
-  std::set<int> seen;
-  for (const int &curr : values) {
-    if (seen.find(curr) == seen.end()) {
-      seen.insert(curr);
-    } else
-      return false;
-  }
-  return true;
+int UniqueConstraint::evaluate(std::initializer_list<int> values) const {
+  return findRepeatCount(values);
 }
 
 LessThanConstraint::LessThanConstraint(std::vector<Position> tiles, int limit)
     : Constraint(std::move(tiles)), limit(limit) {}
-bool LessThanConstraint::evaluate(std::initializer_list<int> values) const {
-  return std::accumulate(values.begin(), values.end(), 0) < limit;
+int LessThanConstraint::evaluate(std::initializer_list<int> values) const {
+  int sum = std::accumulate(values.begin(), values.end(), 0);
+  if (sum < limit)
+    return 0;
+  return (sum - limit + 2) / 3; // +2 to round up instead of down
 }
 
 GreaterThanConstraint::GreaterThanConstraint(std::vector<Position> tiles,
                                              int limit)
     : Constraint(std::move(tiles)), limit(limit) {}
-bool GreaterThanConstraint::evaluate(std::initializer_list<int> values) const {
-  return std::accumulate(values.begin(), values.end(), 0) > limit;
+int GreaterThanConstraint::evaluate(std::initializer_list<int> values) const {
+  int sum = std::accumulate(values.begin(), values.end(), 0);
+  if (sum > limit)
+    return 0;
+  return (sum - limit + 2) / 3;
+}
+
+ExactSumConstraint::ExactSumConstraint(std::vector<Position> tiles, int target)
+    : Constraint(std::move(tiles)), target(target) {}
+int ExactSumConstraint::evaluate(std::initializer_list<int> values) const {
+  return abs(std::accumulate(values.begin(), values.end(), 0) - target + 2) / 3;
 }
 
 // End Constraint Classes ------------------------------------------------------
@@ -135,8 +136,9 @@ const Tile &Grid<Width, Height>::operator[](const Position &pos) const {
 }
 
 template <int Width, int Height>
-std::array<std::array<Tile, Width>, Height> Grid<Width, Height>::getGrid() const {
-	return grid;
+std::array<std::array<Tile, Width>, Height>
+Grid<Width, Height>::getGrid() const {
+  return grid;
 }
 
 // End Grid Class --------------------------------------------------------------
@@ -173,6 +175,14 @@ void PipsState<Width, Height>::swapDominos(int first, int second) {
 }
 
 template <int Width, int Height>
+std::initializer_list<int> PipsState<Width, Height>::getValues(
+    const std::vector<Position> &positions) const {
+  std::initializer_list<int> values{};
+  std::transform(positions.begin(), positions.end(), values.begin(),
+                 [&](const Position &pos) { return grid[pos]; });
+}
+
+template <int Width, int Height>
 bool PipsState<Width, Height>::isSolved() const {
   for (const auto &constraint : *constraints) {
     std::initializer_list<int> values{};
@@ -180,7 +190,7 @@ bool PipsState<Width, Height>::isSolved() const {
     std::transform(
         positions.begin(), positions.end(), values.begin(),
         [&](Position &position) { return grid[position.x][position.y]; });
-    if (!constraint.evaluate(values))
+    if (constraint.evaluate(values) != 0)
       return false;
   }
   return true;
@@ -212,13 +222,11 @@ PipsState<Width, Height>::stateAfterAction(const PipsAction &action) const {
 
 template <int Width, int Height>
 int PipsState<Width, Height>::objective() const {
-  // Could do the following:
-  //
-  // Return how many TILES break each constraint (Not how many constraints are
-  // broken). e.g. EqualConstraint would return the numbers of tiles that AREN'T
-  // equal to whatever. LessThan and GreaterThan Constraints could estimate, get
-  // the difference to the limit and divide by 3 (average of domino digits). We
-  // drive this to 0.
+  int error = 0;
+  for (const auto &constraint : *constraints) {
+    error += constraint.evaluate(getValues(constraint.getTiles()));
+  }
+  return error;
 }
 
 // End PipsState Class ---------------------------------------------------------
