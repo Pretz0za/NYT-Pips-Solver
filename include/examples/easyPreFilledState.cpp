@@ -27,6 +27,6 @@ std::vector<Domino> dominos{
     {{4, 3}, {4, 1}, Orientation::Left}};
 
 PipsState<4, 5> StartState{disabledTiles, dominos, constraints};
-PipsSolver Solver(StartState);
+PipsSolver Solver{StartState};
 
 }; // namespace EasyPrefillExample

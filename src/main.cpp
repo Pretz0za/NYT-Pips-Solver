@@ -5,6 +5,8 @@
 
 int main(int argc, char *argv[]) {
   using namespace EasyPrefillExample;
+  std::cout << "Solver Constraints: " << Solver.constraints << '\n';
+  std::cout << "State Constraints: " << StartState.constraints << '\n';
 
   std::cout << "Starting solve" << '\n';
   Solver.solve();

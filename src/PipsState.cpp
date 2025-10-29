@@ -1,117 +1,90 @@
 #include "pips/PipsState.hpp"
-#include "helpers.hpp"
-#include <algorithm>
 #include <cstdlib>
+#include <memory>
 #include <numeric>
+#include <set>
 #include <utility>
 #include <vector>
 
 // Domino Class ----------------------------------------------------------------
 
-Domino::Domino(std::pair<int, int> value) : value(value) {
-  this->position = {-1, -1};
-  this->orientation = std::pair{false, false};
-}
-
-Domino::Domino(std::pair<int, int> value, Position position,
-               std::pair<bool, bool> orientation)
-    : value(value), position(position), orientation(orientation) {}
-
-void Domino::setPosition(const Position &newPosition) {
-  this->position = newPosition;
-}
-
-void Domino::setOrientation(const std::pair<bool, bool> &newOrientation) {
-  this->orientation = newOrientation;
-}
-
-void Domino::rotate() {
-  orientation.second = !orientation.second;
-  position.x += 1;
-}
-
-void Domino::swap(Domino &other) {
-  std::swap(position, other.position);
-  std::swap(orientation, other.orientation);
-}
-
-std::pair<Position, Position> Domino::getPosition() const {
-  // first = 0 -> left to right
-  // first = 1 -> up to down.
-  // second = 0 -> nothing.
-  // second = 1 -> reverse (right to left, down to up)
-
-  if (this->orientation.first == false) {
-    return {this->position,
-            {this->position.x + (this->orientation.second ? -1 : 1),
-             this->position.y}};
-  } else
-    return {this->position,
-            {this->position.x,
-             this->position.y + (this->orientation.second ? -1 : 1)}};
-}
-
+Domino::Domino(std::pair<int, int> value) : value(value) {}
 std::pair<int, int> Domino::getValues() const { return this->value; }
 
 // End Domino Class ------------------------------------------------------------
 
 // Tile Class ------------------------------------------------------------------
 
-Tile::Tile(int value) : value(value) {}
+Tile::Tile(int value, std::shared_ptr<Domino> domino,
+		   std::pair<bool, bool> orientation)
+	: value(value), domino(std::move(domino)),
+	  orientation(std::move(orientation)) {}
 
-int Tile::getValue() const { return this->value; }
+int Tile::getValue() const { return value; }
+void Tile::setValue(int newValue) { value = newValue; }
 
-void Tile::setValue(int newValue) { this->value = newValue; }
+std::shared_ptr<Domino> Tile::getDomino() const { return domino; }
+void Tile::setDomino(std::shared_ptr<Domino> newDomino) { domino = newDomino; }
+
+std::pair<bool, bool> Tile::getOrientation() const { return orientation; }
+void Tile::setOrientation(std::pair<bool, bool> newOrientation) {
+	orientation = newOrientation;
+}
 
 // End Tile Class --------------------------------------------------------------
 
 // Constraint Classes ----------------------------------------------------------
 
-Constraint::Constraint(std::vector<Position> tiles) : tiles(std::move(tiles)) {}
-std::vector<Position> Constraint::getTiles() const { return tiles; }
-int Constraint::evaluate(std::vector<int> values) const { return 0; }
+Constraint::Constraint(std::vector<Position> tiles)
+	: positions(std::move(tiles)) {}
+std::vector<Position> Constraint::getPositions() const { return positions; }
+bool Constraint::evaluate(std::vector<int> values) const { return 0; }
 
 EqualConstraint::EqualConstraint(std::vector<Position> tiles)
-    : Constraint(std::move(tiles)) {}
-int EqualConstraint::evaluate(std::vector<int> values) const {
-  const int mode = findMode(values);
-  int count = 0;
-  for (const int &curr : values) {
-    if (curr != mode)
-      count++;
-  }
-  return count;
+	: Constraint(std::move(tiles)) {}
+bool EqualConstraint::evaluate(std::vector<int> values) const {
+	if (values.empty())
+		return true;
+	const int first = values[0];
+	int count = 0;
+	for (const int &curr : values) {
+		if (curr != first)
+			return false;
+	}
+	return true;
 }
 
 UniqueConstraint::UniqueConstraint(std::vector<Position> tiles)
-    : Constraint(std::move(tiles)) {}
-int UniqueConstraint::evaluate(std::vector<int> values) const {
-  return findRepeatCount(values);
+	: Constraint(std::move(tiles)) {}
+bool UniqueConstraint::evaluate(std::vector<int> values) const {
+	std::set<int> seen{};
+	for (const auto &val : values) {
+		if (seen.find(val) != seen.end())
+			return false;
+		seen.insert(val);
+	}
+	return true;
 }
 
 LessThanConstraint::LessThanConstraint(std::vector<Position> tiles, int limit)
-    : Constraint(std::move(tiles)), limit(limit) {}
-int LessThanConstraint::evaluate(std::vector<int> values) const {
-  int sum = std::accumulate(values.begin(), values.end(), 0);
-  if (sum < limit)
-    return 0;
-  return (sum - limit + 2) / 3; // +2 to round up instead of down
+	: Constraint(std::move(tiles)), limit(limit) {}
+bool LessThanConstraint::evaluate(std::vector<int> values) const {
+	int sum = std::accumulate(values.begin(), values.end(), 0);
+	return (sum < limit);
 }
 
 GreaterThanConstraint::GreaterThanConstraint(std::vector<Position> tiles,
-                                             int limit)
-    : Constraint(std::move(tiles)), limit(limit) {}
-int GreaterThanConstraint::evaluate(std::vector<int> values) const {
-  int sum = std::accumulate(values.begin(), values.end(), 0);
-  if (sum > limit)
-    return 0;
-  return (sum - limit + 2) / 3;
+											 int limit)
+	: Constraint(std::move(tiles)), limit(limit) {}
+bool GreaterThanConstraint::evaluate(std::vector<int> values) const {
+	int sum = std::accumulate(values.begin(), values.end(), 0);
+	return (sum > limit);
 }
 
 ExactSumConstraint::ExactSumConstraint(std::vector<Position> tiles, int target)
-    : Constraint(std::move(tiles)), target(target) {}
-int ExactSumConstraint::evaluate(std::vector<int> values) const {
-  return abs(std::accumulate(values.begin(), values.end(), 0) - target + 2) / 3;
+	: Constraint(std::move(tiles)), target(target) {}
+bool ExactSumConstraint::evaluate(std::vector<int> values) const {
+	return std::accumulate(values.begin(), values.end(), 0) == target;
 }
 
 // End Constraint Classes ------------------------------------------------------

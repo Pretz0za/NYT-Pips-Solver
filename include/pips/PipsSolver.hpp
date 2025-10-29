@@ -2,6 +2,7 @@
 #define PIPS_SOLVER_HPP
 
 #include "pips/PipsState.hpp"
+#include <iostream>
 #include <memory>
 #include <vector>
 
@@ -10,10 +11,11 @@
 template <int Width, int Height> class PipsSolver {
   PipsState<Width, Height> bestFound;
   Grid<Width, Height> grid;
-  std::shared_ptr<const std::vector<std::shared_ptr<Constraint>>> constraints;
   std::vector<Domino> dominos;
+  int iterations = 0;
 
 public:
+  std::shared_ptr<const std::vector<std::shared_ptr<Constraint>>> constraints;
   PipsSolver(
       int width, int height, std::vector<Position> disabledTiles,
       std::vector<Domino> dominos,
@@ -37,14 +39,16 @@ PipsSolver<Width, Height>::PipsSolver(
 
 template <int Width, int Height>
 PipsSolver<Width, Height>::PipsSolver(PipsState<Width, Height> startState)
-    : bestFound(std::move(startState)), dominos(std::move(startState.dominos)),
-      constraints(std::move(bestFound.constraints)),
-      grid(std::move(startState.grid)) {
+    : bestFound(startState), dominos(startState.dominos),
+      constraints(startState.constraints),
+      grid(startState.grid) {
   srand(time(0));
 }
 
 template <int Width, int Height>
 PipsState<Width, Height> PipsSolver<Width, Height>::iterate() {
+  iterations++;
+  std::cout << "Iterating" << '\n';
   auto actions = bestFound.availableActions();
   PipsState curr = bestFound;
   for (const auto &action : actions) {
@@ -59,8 +63,13 @@ PipsState<Width, Height> PipsSolver<Width, Height>::iterate() {
 
 template <int Width, int Height>
 PipsState<Width, Height> PipsSolver<Width, Height>::solve() {
-  while (!bestFound.isSolved())
+  std::cout << "Entering solve while loop" << '\n';
+  std::cout << "Constraints: " << constraints << '\n';
+  std::cout << "Bestfound Constraints: " << bestFound.constraints << '\n';
+  while (!bestFound.isSolved()) {
+    std::cout << "in loop" << '\n';
     iterate();
+  }
   return bestFound;
 }
 

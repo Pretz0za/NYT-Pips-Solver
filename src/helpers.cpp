@@ -4,28 +4,30 @@
 #include <stdexcept>
 
 int findMode(std::vector<int> values) {
-  if (values.size() == 0)
-    throw std::runtime_error("Empty array has no mode.");
-  std::map<int, int> counts{};
-  for (const auto &num : values) {
-    counts[num] += 1;
-  }
+	if (values.size() == 0)
+		throw std::runtime_error("Empty array has no mode.");
+	std::map<int, int> counts{};
+	for (const auto &num : values) {
+		counts[num] += 1;
+	}
 
-  int mode, modeCount = 0;
-  for (const auto &[key, value] : counts) {
-    if (value > modeCount) {
-      mode = key, modeCount = value;
-    }
-  }
-  return mode;
+	int mode, modeCount = 0;
+	for (const auto &[key, value] : counts) {
+		if (value > modeCount) {
+			mode = key, modeCount = value;
+		}
+	}
+	return mode;
 }
 
 int findRepeatCount(std::vector<int> values) {
 	std::set<int> seen{};
 	int count = 0;
-	for(const auto &num : values){
-		if(seen.find(num) == seen.end()) seen.insert(num);
-		else count++;
+	for (const auto &num : values) {
+		if (seen.find(num) == seen.end())
+			seen.insert(num);
+		else
+			count++;
 	}
 	return count;
 }
