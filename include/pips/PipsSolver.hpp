@@ -2,75 +2,130 @@
 #define PIPS_SOLVER_HPP
 
 #include "pips/PipsState.hpp"
-#include <iostream>
+#include <map>
 #include <memory>
+#include <optional>
+#include <set>
+#include <stack>
 #include <vector>
 
 // Declarations
 
-template <int Width, int Height> class PipsSolver {
-  PipsState<Width, Height> bestFound;
-  Grid<Width, Height> grid;
-  std::vector<Domino> dominos;
-  int iterations = 0;
+template <int Width, int Height> class SolverState {
+	PipsState<Width, Height> gameState;
+	std::map<Position, std::set<Tile>> domains;
 
-public:
-  std::shared_ptr<const std::vector<std::shared_ptr<Constraint>>> constraints;
-  PipsSolver(
-      int width, int height, std::vector<Position> disabledTiles,
-      std::vector<Domino> dominos,
-      std::shared_ptr<std::vector<std::shared_ptr<Constraint>>> constraints);
-  PipsSolver(PipsState<Width, Height> startState);
-  PipsState<Width, Height> iterate();
-  PipsState<Width, Height> solve();
+  public:
+	SolverState(PipsState<Width, Height> gameState);
+	SolverState(
+		std::vector<Position> disabledTiles,
+		std::shared_ptr<const std::vector<std::shared_ptr<Domino>>> dominos,
+		std::shared_ptr<const std::vector<std::shared_ptr<Constraint>>>
+			constraints);
+
+	SolverState(const SolverState<Width, Height> &other);
+	SolverState<Width, Height>
+	operator=(const SolverState<Width, Height> &other);
+
+	std::pair<Position, std::set<Tile>> MRV() const;
+
+	~SolverState() = default;
+};
+
+template <int Width, int Height> class PipsSolver {
+	PipsState<Width, Height> initialState;
+	std::unique_ptr<SolverState<Width, Height>> currentState = nullptr;
+	std::stack<std::unique_ptr<SolverState<Width, Height>>> stack;
+	Grid<Width, Height> grid;
+	std::shared_ptr<const std::vector<std::shared_ptr<Domino>>> dominos;
+
+  public:
+	std::shared_ptr<const std::vector<std::shared_ptr<Constraint>>> constraints;
+	PipsSolver(
+		std::vector<Position> disabledTiles,
+		std::shared_ptr<const std::vector<std::shared_ptr<Domino>>> dominos,
+		std::shared_ptr<const std::vector<std::shared_ptr<Constraint>>>
+			constraints);
+	PipsSolver(PipsState<Width, Height> startState);
+	std::optional<PipsState<Width, Height>> solve();
 };
 
 // Definitions
 
 template <int Width, int Height>
-PipsSolver<Width, Height>::PipsSolver(
-    int width, int height, std::vector<Position> disabledTiles,
-    std::vector<Domino> dominos,
-    std::shared_ptr<std::vector<std::shared_ptr<Constraint>>> constraints)
-    : dominos(std::move(dominos)), constraints(std::move(constraints)),
-      grid(disabledTiles), bestFound{disabledTiles, dominos, constraints} {
-  srand(time(0));
+SolverState<Width, Height>::SolverState(PipsState<Width, Height> gameState)
+	: gameState(gameState), domains{} {}
+
+template <int Width, int Height>
+SolverState<Width, Height>::SolverState(
+	std::vector<Position> disabledTiles,
+	std::shared_ptr<const std::vector<std::shared_ptr<Domino>>> dominos,
+	std::shared_ptr<const std::vector<std::shared_ptr<Constraint>>> constraints)
+	: gameState{disabledTiles, dominos, constraints}, domains{} {}
+
+template <int Width, int Height>
+SolverState<Width, Height>::SolverState(const SolverState<Width, Height> &other)
+	: gameState(other.gameState), domains{other.domains} {}
+
+template <int Width, int Height>
+SolverState<Width, Height>
+SolverState<Width, Height>::operator=(const SolverState<Width, Height> &other) {
+	gameState = other.gameState;
+	domains = other.domains;
 }
+
+template <int Width, int Height>
+std::pair<Position, std::set<Tile>> SolverState<Width, Height>::MRV() const {
+	// Returns the variable (and its domain) with the most constrained domain.
+	// --> Grid square with the minimum possible states after pruning.
+	Position maxP{};
+	int maxSize = -1;
+	for (const auto &[pos, domain] : domains) {
+		if (domain.size() > maxSize) {
+			maxSize = domain.size();
+			maxP = pos;
+		}
+	}
+	return {maxP, domains.at(maxP)};
+}
+
+template <int Width, int Height>
+PipsSolver<Width, Height>::PipsSolver(
+	std::vector<Position> disabledTiles,
+	std::shared_ptr<const std::vector<std::shared_ptr<Domino>>> dominos,
+	std::shared_ptr<const std::vector<std::shared_ptr<Constraint>>> constraints)
+	: dominos(std::move(dominos)), constraints(std::move(constraints)),
+	  grid(disabledTiles), initialState{disabledTiles, dominos, constraints} {}
 
 template <int Width, int Height>
 PipsSolver<Width, Height>::PipsSolver(PipsState<Width, Height> startState)
-    : bestFound(startState), dominos(startState.dominos),
-      constraints(startState.constraints),
-      grid(startState.grid) {
-  srand(time(0));
-}
+	: initialState(startState), dominos(startState.dominos),
+	  constraints(startState.constraints), grid(startState.grid) {}
 
 template <int Width, int Height>
-PipsState<Width, Height> PipsSolver<Width, Height>::iterate() {
-  iterations++;
-  std::cout << "Iterating" << '\n';
-  auto actions = bestFound.availableActions();
-  PipsState curr = bestFound;
-  for (const auto &action : actions) {
-    curr = bestFound.stateAfterAction(action);
-    if (curr.objective() < bestFound.objective())
-      bestFound = curr;
-    else if (rand() % 100 == 0)
-      bestFound = curr;
-  }
-  return bestFound;
-}
+std::optional<PipsState<Width, Height>> PipsSolver<Width, Height>::solve() {
+	stack.push(std::make_unique<SolverState>(initialState));
+	while (!stack.empty()) {
+		currentState = std::move(stack.top());
+		stack.pop();
 
-template <int Width, int Height>
-PipsState<Width, Height> PipsSolver<Width, Height>::solve() {
-  std::cout << "Entering solve while loop" << '\n';
-  std::cout << "Constraints: " << constraints << '\n';
-  std::cout << "Bestfound Constraints: " << bestFound.constraints << '\n';
-  while (!bestFound.isSolved()) {
-    std::cout << "in loop" << '\n';
-    iterate();
-  }
-  return bestFound;
+		if (currentState->isSolved()) {
+			return currentState->getState();
+		}
+
+		auto [pos, domain] = currentState->MRV();
+		for (const auto &value : domain) {
+			std::unique_ptr<SolverState<Width, Height>> next =
+				currentState->setVariable(pos, value);
+
+			// TODO: filter out bad candidates here
+			// - Check arc consistency
+			// - Check effects on neighboring constraints
+			// -- Etc...
+
+			stack.push(std::move(next));
+		}
+	}
 }
 
 #endif

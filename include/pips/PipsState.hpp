@@ -1,7 +1,6 @@
 #ifndef PIPS_STATE_HPP
 #define PIPS_STATE_HPP
 
-#include "helpers.hpp"
 #include <algorithm>
 #include <array>
 #include <cstdlib>
