@@ -3,10 +3,14 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cstdlib>
 #include <initializer_list>
 #include <iostream>
+#include <map>
 #include <memory>
+#include <set>
+#include <span>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -16,6 +20,8 @@
 struct Position {
 	int row;
 	int col;
+
+	bool operator==(const Position &) const = default;
 };
 
 namespace Orientation {
@@ -25,30 +31,45 @@ inline std::pair Down{true, false};
 inline std::pair Up{true, true};
 } // namespace Orientation
 
+template <int Width, int Height> class SolverState;
+class Variable;
+
 class Domino {
 	std::pair<int, int> value;
 
   public:
 	Domino(std::pair<int, int> value);
 
-	// Returns the values of the domino
+	int getValue(bool side) const { return side ? value.first : value.second; };
 	std::pair<int, int> getValues() const;
 
 	~Domino() = default;
 };
 
 class Tile {
-	int value;
+	bool side;
 	std::shared_ptr<Domino> domino;
 	std::pair<bool, bool> orientation;
 
   public:
-	Tile(int value = 0, std::shared_ptr<Domino> domino = nullptr,
-		 std::pair<bool, bool> orientation = {false, false});
+	const bool inPlay;
+	Tile(bool inPlay = true);
+	Tile(bool side, std::shared_ptr<Domino>, std::pair<bool, bool> orientation,
+		 bool inPlay = true);
 
-	// gets/sets the value of the tile and errors if the tile is out of play
-	int getValue() const;
-	void setValue(int newValue);
+	Tile &operator=(const Tile &other);
+
+	Tile getComplement() const {
+		return Tile(!side, domino, {orientation.first, !orientation.second});
+	}
+
+	void setState(bool newSide, std::shared_ptr<Domino> newDomino,
+				  std::pair<bool, bool> newOrientation);
+
+	int getValue() { return domino->getValue(side); };
+
+	bool getSide() const;
+	void setSide(bool newSide);
 
 	std::shared_ptr<Domino> getDomino() const;
 	void setDomino(std::shared_ptr<Domino> newDomino);
@@ -59,16 +80,19 @@ class Tile {
 	~Tile() = default;
 };
 
-template <int Width, int Height> class Grid {
-	std::array<std::array<Tile, Width>, Height> grid;
+template <int Width, int Height, typename K> class Grid {
+	std::array<std::array<K, Width>, Height> grid;
 
   public:
 	Grid();
 	Grid(const std::vector<Position> &disabledTiles);
-	std::array<std::array<Tile, Width>, Height> getGrid() const;
+	std::array<std::array<K, Width>, Height> getGrid() const;
 
-	Tile &operator[](const Position &pos);
-	const Tile &operator[](const Position &pos) const;
+	K &operator[](const Position &pos);
+	const K &operator[](const Position &pos) const;
+
+	Position getOther(const Position &pos,
+					  const std::pair<bool, bool> &orientaion) const;
 
 	~Grid() = default;
 };
@@ -81,7 +105,13 @@ class Constraint {
 	Constraint(std::vector<Position> tiles);
 
 	std::vector<Position> getPositions() const;
-	virtual bool evaluate(std::vector<int> values) const = 0;
+	virtual bool evaluate(std::span<int> values) const = 0;
+	virtual bool evaluate(std::span<Variable> values) const = 0;
+	virtual bool evaluate(std::span<Tile> values) const = 0;
+
+	virtual bool revise(Variable X, std::span<Variable> values);
+
+	virtual bool isSolvable(SolverState &state) const;
 
 	virtual ~Constraint() = default;
 };
@@ -89,32 +119,43 @@ class Constraint {
 class EqualConstraint : public Constraint {
   public:
 	EqualConstraint(std::vector<Position> tiles);
-	bool evaluate(std::vector<int> values) const override;
+	virtual bool evaluate(std::span<int> values) const override;
+	virtual bool evaluate(std::span<Variable> values) const override;
+	virtual bool evaluate(std::span<Tile> values) const override;
+	virtual bool isSolvable(SolverState &state) const override;
 	~EqualConstraint() = default;
 };
 
 class UniqueConstraint : public Constraint {
   public:
 	UniqueConstraint(std::vector<Position> tiles);
-	bool evaluate(std::vector<int> values) const override;
+	virtual bool evaluate(std::span<int> values) const override;
+	virtual bool evaluate(std::span<Variable> values) const override;
+	virtual bool evaluate(std::span<Tile> values) const override;
 	~UniqueConstraint() = default;
 };
 
 class LessThanConstraint : public Constraint {
-	int limit;
+	int target;
 
   public:
-	LessThanConstraint(std::vector<Position> tiles, int limit);
-	bool evaluate(std::vector<int> values) const override;
+	LessThanConstraint(std::vector<Position> tiles, int target);
+	int getTarget() const;
+	virtual bool evaluate(std::span<int> values) const override;
+	virtual bool evaluate(std::span<Variable> values) const override;
+	virtual bool evaluate(std::span<Tile> values) const override;
 	~LessThanConstraint() = default;
 };
 
 class GreaterThanConstraint : public Constraint {
-	int limit;
+	int target;
 
   public:
-	GreaterThanConstraint(std::vector<Position> tiles, int limit);
-	bool evaluate(std::vector<int> values) const override;
+	GreaterThanConstraint(std::vector<Position> tiles, int target);
+	int getTarget() const;
+	virtual bool evaluate(std::span<int> values) const override;
+	virtual bool evaluate(std::span<Variable> values) const override;
+	virtual bool evaluate(std::span<Tile> values) const override;
 	~GreaterThanConstraint() = default;
 };
 
@@ -123,85 +164,94 @@ class ExactSumConstraint : public Constraint {
 
   public:
 	ExactSumConstraint(std::vector<Position> tiles, int target);
-	bool evaluate(std::vector<int> values) const override;
+	int getTarget() const;
+	virtual bool evaluate(std::span<int> values) const override;
+	virtual bool evaluate(std::span<Variable> values) const override;
+	virtual bool evaluate(std::span<Tile> values) const override;
 	~ExactSumConstraint() = default;
 };
 
-enum PipsActionType { Rotate, Swap };
+template <int Width, int Height> class PipsAI;
 
-struct PipsAction {
-	PipsActionType action;
-	int first;
-	int second;
-};
+template <int Width, int Height> class Pips {
+	Grid<Width, Height, Tile> grid;
+	std::vector<std::shared_ptr<Domino>> dominos;
+	std::vector<std::shared_ptr<Constraint>> constraints;
 
-template <int Width, int Height> class PipsSolver;
+  public:
+	Pips(std::vector<Position> disabledTiles,
+		 std::vector<std::shared_ptr<Domino>> dominos,
+		 std::vector<std::shared_ptr<Constraint>> constraints);
+	Pips(Pips<Width, Height> &&other);
 
-template <int Width, int Height> class PipsState {
-	Grid<Width, Height> grid;
-	std::shared_ptr<const std::vector<std::shared_ptr<Domino>>> dominos;
-	std::shared_ptr<const std::vector<std::shared_ptr<Constraint>>> constraints;
+	Pips(const Pips<Width, Height> &other);
+	Pips<Width, Height> &operator=(const Pips<Width, Height> &other);
 
 	void placeDomino(std::shared_ptr<Domino> domino, Position position,
 					 std::pair<bool, bool> orientation);
-
-  public:
-	PipsState(
-		std::vector<Position> disabledTiles,
-		std::shared_ptr<std::vector<std::shared_ptr<Domino>>> dominos,
-		std::shared_ptr<std::vector<std::shared_ptr<Constraint>>> constraints);
-	PipsState(PipsState<Width, Height> &&other);
-
-	PipsState(const PipsState<Width, Height> &other);
-	PipsState<Width, Height> &operator=(const PipsState<Width, Height> &other);
 
 	std::vector<Tile> getTiles(const std::vector<Position> &positions) const;
 
 	bool isSolved() const;
 
-	~PipsState() = default;
+	~Pips() = default;
 
-	friend PipsSolver<Width, Height>;
+	friend PipsAI<Width, Height>;
+	friend SolverState<Width, Height>;
 };
 
 // Definitions
 
 // Grid Class ------------------------------------------------------------------
 
-template <int Width, int Height>
+template <int Width, int Height, typename K>
+Grid<Width, Height, K>::Grid() : grid{{K()}} {}
 
-Grid<Width, Height>::Grid() : grid{{Tile()}} {}
-
-template <int Width, int Height>
-Grid<Width, Height>::Grid(const std::vector<Position> &disabledTiles)
-	: grid{{Tile()}} {
-
+template <int Width, int Height, typename K>
+Grid<Width, Height, K>::Grid(const std::vector<Position> &disabledTiles)
+	: grid{{K()}} {
 	for (const auto &pos : disabledTiles) {
 		if (pos.row >= Width || pos.col >= Height)
 			throw std::runtime_error("Disabled tiles out of bounds");
-		grid[pos.row][pos.col].setValue(-1);
+		grid[pos] = K(false);
 	}
 }
 
-template <int Width, int Height>
-Tile &Grid<Width, Height>::operator[](const Position &pos) {
+template <int Width, int Height, typename K>
+K &Grid<Width, Height, K>::operator[](const Position &pos) {
 	if (pos.row >= Height || pos.col >= Width) {
 		throw std::runtime_error("Indexed position out of bounds");
 	}
 	return grid[pos.row][pos.col];
 }
 
-template <int Width, int Height>
-const Tile &Grid<Width, Height>::operator[](const Position &pos) const {
+template <int Width, int Height, typename K>
+const K &Grid<Width, Height, K>::operator[](const Position &pos) const {
 	if (pos.row >= Height || pos.col >= Width) {
 		throw std::runtime_error("Indexed position out of bounds");
 	}
 	return grid[pos.row][pos.col];
 }
 
-template <int Width, int Height>
-std::array<std::array<Tile, Width>, Height>
-Grid<Width, Height>::getGrid() const {
+template <int Width, int Height, typename K>
+Position Grid<Width, Height, K>::getOther(
+	const Position &position, const std::pair<bool, bool> &orientation) const {
+	if (orientation.first) {
+		if (orientation.second)
+			return {position.row - 1, position.col};
+		else
+			return {position.row + 1, position.col};
+	} else {
+		if (orientation.second)
+			return {position.row, position.col - 1};
+		else
+			return {position.row, position.col + 1};
+	}
+}
+
+template <int Width, int Height, typename K>
+std::array<std::array<K, Width>, Height>
+Grid<Width, Height, K>::getGrid() const {
 	return grid;
 }
 
@@ -210,26 +260,24 @@ Grid<Width, Height>::getGrid() const {
 // PipsState Class -------------------------------------------------------------
 
 template <int Width, int Height>
-PipsState<Width, Height>::PipsState(
-	std::vector<Position> disabledTiles,
-	std::shared_ptr<std::vector<std::shared_ptr<Domino>>> dominos,
-	std::shared_ptr<std::vector<std::shared_ptr<Constraint>>> constraints)
+Pips<Width, Height>::Pips(std::vector<Position> disabledTiles,
+						  std::vector<std::shared_ptr<Domino>> dominos,
+						  std::vector<std::shared_ptr<Constraint>> constraints)
 	: constraints(std::move(constraints)), dominos(std::move(dominos)),
 	  grid(disabledTiles) {}
 
 template <int Width, int Height>
-PipsState<Width, Height>::PipsState(PipsState<Width, Height> &&other)
+Pips<Width, Height>::Pips(Pips<Width, Height> &&other)
 	: constraints(std::move(other.constraints)),
 	  dominos(std::move(other.dominos)), grid(std::move(other.grid)) {}
 
 template <int Width, int Height>
-PipsState<Width, Height>::PipsState(const PipsState &other)
+Pips<Width, Height>::Pips(const Pips &other)
 	: dominos(other.dominos), constraints(other.constraints), grid(other.grid) {
 }
 
 template <int Width, int Height>
-PipsState<Width, Height> &
-PipsState<Width, Height>::operator=(const PipsState &other) {
+Pips<Width, Height> &Pips<Width, Height>::operator=(const Pips &other) {
 	constraints = other.constraints;
 	dominos = other.dominos;
 	grid = other.grid;
@@ -237,57 +285,40 @@ PipsState<Width, Height>::operator=(const PipsState &other) {
 }
 
 template <int Width, int Height>
-void PipsState<Width, Height>::placeDomino(std::shared_ptr<Domino> domino,
-										   Position position,
-										   std::pair<bool, bool> orientation) {
+void Pips<Width, Height>::placeDomino(std::shared_ptr<Domino> domino,
+									  Position position,
+									  std::pair<bool, bool> orientation) {
 	auto [val1, val2] = domino->getValues();
-	grid[position].setValue(val1);
-	if (orientation.first) {
-		if (orientation.second)
-			grid[position.row - 1][position.col].setValue(val2);
-		else
-			grid[position.row + 1][position.col].setValue(val2);
-	} else {
-		if (orientation.second)
-			grid[position.row][position.col - 1].setValue(val2);
-		else
-			grid[position.row][position.col + 1].setValue(val2);
-	}
+	auto pos2 = grid.getSecondTilePos(position, orientation);
+	grid[position].setState(val1, domino, orientation);
+	grid[pos2].setState(val2, domino, {orientation.first, !orientation.second});
 }
 
 template <int Width, int Height>
-std::vector<Tile> PipsState<Width, Height>::getTiles(
-	const std::vector<Position> &positions) const {
+std::vector<Tile>
+Pips<Width, Height>::getTiles(const std::vector<Position> &positions) const {
 	std::vector<Tile> values{static_cast<int>(positions.size())};
 	std::transform(positions.begin(), positions.end(), values.begin(),
 				   [&](const Position &pos) { return grid[pos]; });
 	return values;
 }
 
-template <int Width, int Height>
-bool PipsState<Width, Height>::isSolved() const {
-	std::cout << "Entering isSolved()" << '\n';
-	std::cout << "Constraints: " << constraints << '\n'; // FIX: NULLPTR!!
+template <int Width, int Height> bool Pips<Width, Height>::isSolved() const {
 	for (const auto &row : grid) {
-		for (const auto &tile : row) {
-			if (!tile.getDomino() && tile.getValue != -1)
+		for (const Tile &tile : row) {
+			if (!tile.getDomino() && tile.inPlay)
 				return false;
 		}
 	}
-	for (const auto &constraint : *constraints) {
-		std::cout << "ITS FIXED" << '\n';
+
+	for (const auto &constraint : constraints) {
 		std::vector<Position> positions = constraint->getPositions();
 		std::vector<int> values{static_cast<int>(positions.size())};
 		std::transform(positions.begin(), positions.end(), values.begin(),
 					   [&](Position &position) {
 						   Tile tile = grid[position];
-						   if (tile.getValue() == -1)
-							   throw std::runtime_error(
-								   "isSolved: checking disabled tile against "
-								   "constraint is illegal");
 						   return tile.getValue();
 					   });
-		std::cout << "ITS FIXED" << '\n';
 		if (!constraint->evaluate(values))
 			return false;
 	}

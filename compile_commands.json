@@ -1,1 +1,32 @@
-build/compile_commands.json
+[
+{
+  "directory": "/Users/abdulazizalahmadi/Desktop/Projects/NYTGames/Pips",
+  "command": "/usr/bin/c++  -I/Users/abdulazizalahmadi/Desktop/Projects/NYTGames/Pips/include -std=gnu++20 -arch arm64 -o CMakeFiles/solver.dir/src/GAC.cpp.o -c /Users/abdulazizalahmadi/Desktop/Projects/NYTGames/Pips/src/GAC.cpp",
+  "file": "/Users/abdulazizalahmadi/Desktop/Projects/NYTGames/Pips/src/GAC.cpp",
+  "output": "CMakeFiles/solver.dir/src/GAC.cpp.o"
+},
+{
+  "directory": "/Users/abdulazizalahmadi/Desktop/Projects/NYTGames/Pips",
+  "command": "/usr/bin/c++  -I/Users/abdulazizalahmadi/Desktop/Projects/NYTGames/Pips/include -std=gnu++20 -arch arm64 -o CMakeFiles/solver.dir/src/PipsSolver.cpp.o -c /Users/abdulazizalahmadi/Desktop/Projects/NYTGames/Pips/src/PipsSolver.cpp",
+  "file": "/Users/abdulazizalahmadi/Desktop/Projects/NYTGames/Pips/src/PipsSolver.cpp",
+  "output": "CMakeFiles/solver.dir/src/PipsSolver.cpp.o"
+},
+{
+  "directory": "/Users/abdulazizalahmadi/Desktop/Projects/NYTGames/Pips",
+  "command": "/usr/bin/c++  -I/Users/abdulazizalahmadi/Desktop/Projects/NYTGames/Pips/include -std=gnu++20 -arch arm64 -o CMakeFiles/solver.dir/src/PipsState.cpp.o -c /Users/abdulazizalahmadi/Desktop/Projects/NYTGames/Pips/src/PipsState.cpp",
+  "file": "/Users/abdulazizalahmadi/Desktop/Projects/NYTGames/Pips/src/PipsState.cpp",
+  "output": "CMakeFiles/solver.dir/src/PipsState.cpp.o"
+},
+{
+  "directory": "/Users/abdulazizalahmadi/Desktop/Projects/NYTGames/Pips",
+  "command": "/usr/bin/c++  -I/Users/abdulazizalahmadi/Desktop/Projects/NYTGames/Pips/include -std=gnu++20 -arch arm64 -o CMakeFiles/solver.dir/src/helpers.cpp.o -c /Users/abdulazizalahmadi/Desktop/Projects/NYTGames/Pips/src/helpers.cpp",
+  "file": "/Users/abdulazizalahmadi/Desktop/Projects/NYTGames/Pips/src/helpers.cpp",
+  "output": "CMakeFiles/solver.dir/src/helpers.cpp.o"
+},
+{
+  "directory": "/Users/abdulazizalahmadi/Desktop/Projects/NYTGames/Pips",
+  "command": "/usr/bin/c++  -I/Users/abdulazizalahmadi/Desktop/Projects/NYTGames/Pips/include -std=gnu++20 -arch arm64 -o CMakeFiles/solver.dir/src/main.cpp.o -c /Users/abdulazizalahmadi/Desktop/Projects/NYTGames/Pips/src/main.cpp",
+  "file": "/Users/abdulazizalahmadi/Desktop/Projects/NYTGames/Pips/src/main.cpp",
+  "output": "CMakeFiles/solver.dir/src/main.cpp.o"
+}
+]

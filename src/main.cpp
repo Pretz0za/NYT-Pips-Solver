@@ -4,12 +4,7 @@
 #include <iostream>
 
 int main(int argc, char *argv[]) {
-  using namespace EasyPrefillExample;
-  std::cout << "Solver Constraints: " << Solver.constraints << '\n';
-  std::cout << "State Constraints: " << StartState.constraints << '\n';
-
-  std::cout << "Starting solve" << '\n';
-  Solver.solve();
-  std::cout << "Finished solve" << '\n';
-  return 0;
+	using namespace EasyPrefillExample;
+	std::cout << "Hello World!" << '\n';
+	return 0;
 }
