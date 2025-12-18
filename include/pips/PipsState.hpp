@@ -63,10 +63,15 @@ class Tile {
 		return Tile(!side, domino, {orientation.first, !orientation.second});
 	}
 
+	bool operator==(const Tile &other) const {
+		return side == other.side && domino == other.domino &&
+			   orientation == other.orientation;
+	}
+
 	void setState(bool newSide, std::shared_ptr<Domino> newDomino,
 				  std::pair<bool, bool> newOrientation);
 
-	int getValue() { return domino->getValue(side); };
+	int getValue() const { return domino->getValue(side); };
 
 	bool getSide() const;
 	void setSide(bool newSide);
@@ -79,6 +84,29 @@ class Tile {
 
 	~Tile() = default;
 };
+
+namespace std {
+template <> struct hash<Tile> {
+	std::size_t operator()(const Tile &tile) const {
+		std::size_t h = 0;
+
+		// hash side
+		h ^= std::hash<bool>{}(tile.getSide()) + 0x9e3779b9 + (h << 6) +
+			 (h >> 2);
+
+		// hash domino pointer
+		h ^= std::hash<Domino *>{}(tile.getDomino().get()) + 0x9e3779b9 +
+			 (h << 6) + (h >> 2);
+
+		// hash orientation
+		auto o = tile.getOrientation();
+		h ^= std::hash<bool>{}(o.first) + 0x9e3779b9 + (h << 6) + (h >> 2);
+		h ^= std::hash<bool>{}(o.second) + 0x9e3779b9 + (h << 6) + (h >> 2);
+
+		return h;
+	}
+};
+} // namespace std
 
 template <int Width, int Height, typename K> class Grid {
 	std::array<std::array<K, Width>, Height> grid;
@@ -109,10 +137,6 @@ class Constraint {
 	virtual bool evaluate(std::span<Variable> values) const = 0;
 	virtual bool evaluate(std::span<Tile> values) const = 0;
 
-	virtual bool revise(Variable X, std::span<Variable> values);
-
-	virtual bool isSolvable(SolverState &state) const;
-
 	virtual ~Constraint() = default;
 };
 
@@ -122,7 +146,6 @@ class EqualConstraint : public Constraint {
 	virtual bool evaluate(std::span<int> values) const override;
 	virtual bool evaluate(std::span<Variable> values) const override;
 	virtual bool evaluate(std::span<Tile> values) const override;
-	virtual bool isSolvable(SolverState &state) const override;
 	~EqualConstraint() = default;
 };
 

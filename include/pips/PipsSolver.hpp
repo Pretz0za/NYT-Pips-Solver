@@ -13,13 +13,14 @@
 #include <stack>
 #include <stdexcept>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 // Declarations
 
 class Variable {
-	std::set<Tile> domain;
-	std::vector<std::set<Tile>> reductions;
+	std::unordered_set<Tile> domain;
+	std::vector<std::unordered_set<Tile>> reductions;
 	Position position;
 
   public:
@@ -29,11 +30,11 @@ class Variable {
 	Variable &operator=(const Variable &other);
 
 	void undo();
-	void insertInDomain(std::set<Tile> &values);
-	void pruneDomain(const std::set<Tile> &values);
-	void pushReduction(const std::set<Tile> &values);
+	void insertInDomain(std::unordered_set<Tile> &values);
+	void pruneDomain(const std::unordered_set<Tile> &values);
+	void pushReduction(const std::unordered_set<Tile> &values);
 	void assign(const Tile &value);
-	std::set<Tile> getDomain() const { return domain; };
+	std::unordered_set<Tile> getDomain() const { return domain; };
 
 	~Variable() = default;
 };
@@ -58,17 +59,18 @@ template <int Width, int Height> class SolverState {
 
 	bool isSolvable(const Constraint &constraint);
 
-	std::unordered_map<Position, std::set<Tile>> pruneVariableDomain(
+	std::unordered_map<Position, std::unordered_set<Tile>> pruneVariableDomain(
 		Position position,
-		const std::set<Tile>
+		const std::unordered_set<Tile>
 			&removed); // For each value in removed, it removes the value from
 					   // the domain, and also the complement value from the
 					   // complement variable's domain.
 
-	void undoReduction(
-		const std::unordered_map<Position, std::set<Tile>> &reductionMap);
+	void
+	undoReduction(const std::unordered_map<Position, std::unordered_set<Tile>>
+					  &reductionMap);
 
-	std::unordered_map<Position, std::set<Tile>>
+	std::unordered_map<Position, std::unordered_set<Tile>>
 	assignVariable(Position position, Tile value);
 
 	bool isSolved() const;
@@ -184,9 +186,9 @@ bool SolverState<Width, Height>::isSolved() const {
 }
 
 template <int Width, int Height>
-std::unordered_map<Position, std::set<Tile>>
+std::unordered_map<Position, std::unordered_set<Tile>>
 SolverState<Width, Height>::assignVariable(Position position, Tile value) {
-	std::set<Tile> domain = grid[position].getDomain();
+	std::unordered_set<Tile> domain = grid[position].getDomain();
 	if (domain.find(value) == domain.end())
 		throw std::runtime_error("Cannot assign to a value not in domain");
 	domain.erase(value); // domain now holds elements to be removed
@@ -194,12 +196,12 @@ SolverState<Width, Height>::assignVariable(Position position, Tile value) {
 }
 
 template <int Width, int Height>
-std::unordered_map<Position, std::set<Tile>>
-SolverState<Width, Height>::pruneVariableDomain(Position position,
-												const std::set<Tile> &removed) {
-	std::set<Tile> domain = grid[position].getDomain();
-	std::unordered_map<Position, std::set<Tile>> reductionMap{};
-	const std::set<Tile> removedComplements;
+std::unordered_map<Position, std::unordered_set<Tile>>
+SolverState<Width, Height>::pruneVariableDomain(
+	Position position, const std::unordered_set<Tile> &removed) {
+	std::unordered_set<Tile> domain = grid[position].getDomain();
+	std::unordered_map<Position, std::unordered_set<Tile>> reductionMap{};
+	const std::unordered_set<Tile> removedComplements;
 	Tile complementRemoval;
 	Position complementPosition;
 	for (const auto value : removed) {
@@ -217,7 +219,8 @@ SolverState<Width, Height>::pruneVariableDomain(Position position,
 
 template <int Width, int Height>
 void SolverState<Width, Height>::undoReduction(
-	const std::unordered_map<Position, std::set<Tile>> &reductionMap) {
+	const std::unordered_map<Position, std::unordered_set<Tile>>
+		&reductionMap) {
 	for (const auto &pair : reductionMap) {
 		grid[pair.first].insertInDomain(pair.second);
 	}
@@ -268,8 +271,8 @@ PipsAI<Width, Height>::PipsAI(const Pips<Width, Height> &startState)
 template <int Width, int Height>
 bool PipsAI<Width, Height>::revise(Position position,
 								   const Constraint &constraint) {
-	std::set<Tile> domain = state.grid[position].getDomain();
-	std::unordered_map<Position, std::set<Tile>> reductionMap;
+	std::unordered_set<Tile> domain = state.grid[position].getDomain();
+	std::unordered_map<Position, std::unordered_set<Tile>> reductionMap;
 	bool revised = false;
 	for (const auto &value : domain) {
 
@@ -305,8 +308,8 @@ bool SolverState<Width, Height>::isSolvable(const Constraint &constraint) {
 	if (choice.row == -1 && choice.col == -1)
 		return constraint.evaluate(variables);
 
-	std::set<Tile> domain = grid[choice].getDomain();
-	std::unordered_map<Position, std::set<Tile>> reductionMap;
+	std::unordered_set<Tile> domain = grid[choice].getDomain();
+	std::unordered_map<Position, std::unordered_set<Tile>> reductionMap;
 	for (const auto &value : domain) {
 		reductionMap = assignVariable(choice, value);
 

@@ -1,5 +1,5 @@
 #include "pips/PipsState.hpp"
-#include "helpers.hpp"
+#include "pips/PipsSolver.hpp"
 #include <cstdlib>
 #include <map>
 #include <memory>
@@ -59,11 +59,11 @@ void Tile::setOrientation(std::pair<bool, bool> newOrientation) {
 Constraint::Constraint(std::vector<Position> tiles)
 	: positions(std::move(tiles)) {}
 std::vector<Position> Constraint::getPositions() const { return positions; }
-bool Constraint::evaluate(std::vector<int> values) const { return 0; }
+bool Constraint::evaluate(std::span<int> values) const { return 0; }
 
 EqualConstraint::EqualConstraint(std::vector<Position> tiles)
 	: Constraint(std::move(tiles)) {}
-bool EqualConstraint::evaluate(std::vector<int> values) const {
+bool EqualConstraint::evaluate(std::span<int> values) const {
 	if (values.empty())
 		return true;
 	const int first = values[0];
@@ -75,36 +75,36 @@ bool EqualConstraint::evaluate(std::vector<int> values) const {
 	return true;
 }
 
-bool EqualConstraint::isSolvable(
-	std::map<Position, std::set<Tile>> &domains) const {
-	for (auto &[variable, domain] : domains) {
-		if (domain.size() == 1)
-			continue;
-		auto originalDomain = domain;
-		domain.clear();
-		auto newDomain = domain;
-		for (auto value : originalDomain) {
-			domain.insert(value);
-			std::map<Position, std::set<Tile>> deleted =
-				clearDominoFromDomains(domains, value.getDomino(), variable);
-			if (isSolvable(domains))
-				newDomain.insert(value);
-			for (const auto &[variable, value] : deleted) {
-				domains.at(variable).insert(value.begin(), value.end());
-			}
-		}
+bool EqualConstraint::evaluate(std::span<Tile> values) const {
+	if (values.empty())
+		return true;
+	const auto first = values[0].getValue();
+	int count = 0;
+	for (const auto &curr : values) {
+		if (curr.getValue() != first)
+			return false;
+	}
+	return true;
+}
+bool EqualConstraint::evaluate(std::span<Variable> values) const {
+	if (values.empty())
+		return true;
+	const auto first = values[0].getDomain().begin()->getValue();
+	int count = 0;
+	for (const auto &curr : values) {
 
-		if (newDomain.empty())
+		if (curr.getDomain().size() != 1)
 			return false;
 
-		domain = newDomain;
+		if (curr.getDomain().begin()->getValue() != first)
+			return false;
 	}
 	return true;
 }
 
 UniqueConstraint::UniqueConstraint(std::vector<Position> tiles)
 	: Constraint(std::move(tiles)) {}
-bool UniqueConstraint::evaluate(std::vector<int> values) const {
+bool UniqueConstraint::evaluate(std::span<int> values) const {
 	std::set<int> seen{};
 	for (const auto &val : values) {
 		if (seen.find(val) != seen.end())
@@ -114,19 +114,80 @@ bool UniqueConstraint::evaluate(std::vector<int> values) const {
 	return true;
 }
 
+bool UniqueConstraint::evaluate(std::span<Tile> values) const {
+	std::set<int> seen{};
+	for (const auto &val : values) {
+		if (seen.find(val.getValue()) != seen.end())
+			return false;
+		seen.insert(val.getValue());
+	}
+	return true;
+}
+
+bool UniqueConstraint::evaluate(std::span<Variable> values) const {
+	std::set<int> seen{};
+	for (const auto &val : values) {
+		if (val.getDomain().size() != 1)
+			return false;
+
+		if (seen.find(val.getDomain().begin()->getValue()) != seen.end())
+			return false;
+		seen.insert(val.getDomain().begin()->getValue());
+	}
+	return true;
+}
+
 LessThanConstraint::LessThanConstraint(std::vector<Position> tiles, int target)
 	: Constraint(std::move(tiles)), target(target) {}
-bool LessThanConstraint::evaluate(std::vector<int> values) const {
+bool LessThanConstraint::evaluate(std::span<int> values) const {
 	int sum = std::accumulate(values.begin(), values.end(), 0);
 	return (sum < target);
 }
+
+bool LessThanConstraint::evaluate(std::span<Tile> values) const {
+	int sum = 0;
+	for (const auto &val : values) {
+		sum += val.getValue();
+	}
+
+	return (sum < target);
+}
+
+bool LessThanConstraint::evaluate(std::span<Variable> values) const {
+	int sum = 0;
+	for (const auto &val : values) {
+		if (val.getDomain().size() != 1)
+			return false;
+		sum += val.getDomain().begin()->getValue();
+	}
+	return (sum < target);
+}
+
 int LessThanConstraint::getTarget() const { return target; }
 
 GreaterThanConstraint::GreaterThanConstraint(std::vector<Position> tiles,
 											 int target)
 	: Constraint(std::move(tiles)), target(target) {}
-bool GreaterThanConstraint::evaluate(std::vector<int> values) const {
+bool GreaterThanConstraint::evaluate(std::span<int> values) const {
 	int sum = std::accumulate(values.begin(), values.end(), 0);
+	return (sum > target);
+}
+
+bool GreaterThanConstraint::evaluate(std::span<Tile> values) const {
+	int sum = 0;
+	for (const auto &val : values) {
+		sum += val.getValue();
+	}
+	return (sum > target);
+}
+
+bool GreaterThanConstraint::evaluate(std::span<Variable> values) const {
+	int sum = 0;
+	for (const auto &val : values) {
+		if (val.getDomain().size() != 1)
+			return false;
+		sum += val.getDomain().begin()->getValue();
+	}
 	return (sum > target);
 }
 
@@ -134,9 +195,28 @@ int GreaterThanConstraint::getTarget() const { return target; }
 
 ExactSumConstraint::ExactSumConstraint(std::vector<Position> tiles, int target)
 	: Constraint(std::move(tiles)), target(target) {}
-bool ExactSumConstraint::evaluate(std::vector<int> values) const {
+bool ExactSumConstraint::evaluate(std::span<int> values) const {
 	return std::accumulate(values.begin(), values.end(), 0) == target;
 }
+
+bool ExactSumConstraint::evaluate(std::span<Tile> values) const {
+	int sum = 0;
+	for (const auto &val : values) {
+		sum += val.getValue();
+	}
+	return (sum == target);
+}
+
+bool ExactSumConstraint::evaluate(std::span<Variable> values) const {
+	int sum = 0;
+	for (const auto &val : values) {
+		if (val.getDomain().size() != 1)
+			return false;
+		sum += val.getDomain().begin()->getValue();
+	}
+	return (sum == target);
+}
+
 int ExactSumConstraint::getTarget() const { return target; }
 
 // End Constraint Classes ------------------------------------------------------

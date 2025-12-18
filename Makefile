@@ -129,30 +129,6 @@ solver/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/solver.dir/build.make CMakeFiles/solver.dir/build
 .PHONY : solver/fast
 
-src/GAC.o: src/GAC.cpp.o
-.PHONY : src/GAC.o
-
-# target to build an object file
-src/GAC.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/solver.dir/build.make CMakeFiles/solver.dir/src/GAC.cpp.o
-.PHONY : src/GAC.cpp.o
-
-src/GAC.i: src/GAC.cpp.i
-.PHONY : src/GAC.i
-
-# target to preprocess a source file
-src/GAC.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/solver.dir/build.make CMakeFiles/solver.dir/src/GAC.cpp.i
-.PHONY : src/GAC.cpp.i
-
-src/GAC.s: src/GAC.cpp.s
-.PHONY : src/GAC.s
-
-# target to generate assembly for a file
-src/GAC.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/solver.dir/build.make CMakeFiles/solver.dir/src/GAC.cpp.s
-.PHONY : src/GAC.cpp.s
-
 src/PipsSolver.o: src/PipsSolver.cpp.o
 .PHONY : src/PipsSolver.o
 
@@ -258,9 +234,6 @@ help:
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
 	@echo "... solver"
-	@echo "... src/GAC.o"
-	@echo "... src/GAC.i"
-	@echo "... src/GAC.s"
 	@echo "... src/PipsSolver.o"
 	@echo "... src/PipsSolver.i"
 	@echo "... src/PipsSolver.s"

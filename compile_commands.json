@@ -1,12 +1,6 @@
 [
 {
   "directory": "/Users/abdulazizalahmadi/Desktop/Projects/NYTGames/Pips",
-  "command": "/usr/bin/c++  -I/Users/abdulazizalahmadi/Desktop/Projects/NYTGames/Pips/include -std=gnu++20 -arch arm64 -o CMakeFiles/solver.dir/src/GAC.cpp.o -c /Users/abdulazizalahmadi/Desktop/Projects/NYTGames/Pips/src/GAC.cpp",
-  "file": "/Users/abdulazizalahmadi/Desktop/Projects/NYTGames/Pips/src/GAC.cpp",
-  "output": "CMakeFiles/solver.dir/src/GAC.cpp.o"
-},
-{
-  "directory": "/Users/abdulazizalahmadi/Desktop/Projects/NYTGames/Pips",
   "command": "/usr/bin/c++  -I/Users/abdulazizalahmadi/Desktop/Projects/NYTGames/Pips/include -std=gnu++20 -arch arm64 -o CMakeFiles/solver.dir/src/PipsSolver.cpp.o -c /Users/abdulazizalahmadi/Desktop/Projects/NYTGames/Pips/src/PipsSolver.cpp",
   "file": "/Users/abdulazizalahmadi/Desktop/Projects/NYTGames/Pips/src/PipsSolver.cpp",
   "output": "CMakeFiles/solver.dir/src/PipsSolver.cpp.o"

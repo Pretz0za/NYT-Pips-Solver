@@ -1,5 +1,6 @@
 #include "pips/PipsSolver.hpp"
 #include <stdexcept>
+#include <unordered_set>
 
 Variable::Variable(bool active) : inPlay(active) {
 	domain = {};
@@ -20,15 +21,17 @@ Variable &Variable::operator=(const Variable &other) {
 	return *this;
 }
 
-void Variable::insertInDomain(std::set<Tile> &values) { domain.merge(values); }
+void Variable::insertInDomain(std::unordered_set<Tile> &values) {
+	domain.merge(values);
+}
 
-void Variable::pruneDomain(const std::set<Tile> &values) {
+void Variable::pruneDomain(const std::unordered_set<Tile> &values) {
 	for (const auto &val : values) {
 		domain.erase(val);
 	}
 }
 
-void Variable::pushReduction(const std::set<Tile> &values) {
+void Variable::pushReduction(const std::unordered_set<Tile> &values) {
 	reductions.push_back(values);
 }
 
