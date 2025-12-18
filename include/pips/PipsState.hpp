@@ -24,6 +24,17 @@ struct Position {
 	bool operator==(const Position &) const = default;
 };
 
+namespace std {
+template <> struct hash<Position> {
+	std::size_t operator()(const Position &pos) const noexcept {
+		std::size_t h = 0;
+		h ^= std::hash<int>{}(pos.row) + 0x9e3779b9 + (h << 6) + (h >> 2);
+		h ^= std::hash<int>{}(pos.col) + 0x9e3779b9 + (h << 6) + (h >> 2);
+		return h;
+	}
+};
+} // namespace std
+
 namespace Orientation {
 inline std::pair Right{false, false};
 inline std::pair Left{false, true};
@@ -118,6 +129,10 @@ template <int Width, int Height, typename K> class Grid {
 
 	K &operator[](const Position &pos);
 	const K &operator[](const Position &pos) const;
+	Grid<Width, Height, K> operator=(const Grid<Width, Height, K> &other) {
+		grid = other.grid;
+		return *this;
+	}
 
 	Position getOther(const Position &pos,
 					  const std::pair<bool, bool> &orientaion) const;
@@ -236,7 +251,7 @@ Grid<Width, Height, K>::Grid(const std::vector<Position> &disabledTiles)
 	for (const auto &pos : disabledTiles) {
 		if (pos.row >= Width || pos.col >= Height)
 			throw std::runtime_error("Disabled tiles out of bounds");
-		grid[pos] = K(false);
+		grid[pos.row][pos.col] = K(false);
 	}
 }
 

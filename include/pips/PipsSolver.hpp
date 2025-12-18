@@ -4,12 +4,9 @@
 #include "pips/PipsState.hpp"
 #include <algorithm>
 #include <cassert>
-#include <map>
 #include <memory>
 #include <optional>
 #include <queue>
-#include <ranges>
-#include <set>
 #include <stack>
 #include <stdexcept>
 #include <unordered_map>
@@ -30,7 +27,7 @@ class Variable {
 	Variable &operator=(const Variable &other);
 
 	void undo();
-	void insertInDomain(std::unordered_set<Tile> &values);
+	void insertInDomain(std::unordered_set<Tile> values);
 	void pruneDomain(const std::unordered_set<Tile> &values);
 	void pushReduction(const std::unordered_set<Tile> &values);
 	void assign(const Tile &value);
@@ -82,7 +79,7 @@ template <int Width, int Height> class SolverState {
 };
 
 template <int Width, int Height> class PipsAI {
-	SolverState<Width, Height> state = nullptr;
+	SolverState<Width, Height> state;
 	std::vector<std::shared_ptr<Constraint>> constraints;
 	std::vector<std::shared_ptr<Domino>> dominos;
 	std::stack<std::pair<SolverState<Width, Height>, Assignment>>
@@ -90,22 +87,22 @@ template <int Width, int Height> class PipsAI {
 
 	bool solved() const;
 
-  public:
-	PipsAI(std::vector<Position> disabledTiles,
-		   std::vector<std::shared_ptr<Domino>> dominos,
-		   std::vector<std::shared_ptr<Constraint>> constraints);
-	PipsAI(const Pips<Width, Height> &startState);
-	std::optional<SolverState<Width, Height>> solve();
-
 	bool revise(Position position, const Constraint &constraint);
 	bool GAC();
 
 	// TODO:
 
 	void pushState(
-		Assignment); // Push a <state, assignment> i.e. state-action pair
-	void popState(); // Pops the top pair, assigns the variable in state,
+		Assignment action); // Push a <state, assignment> i.e. state-action pair
+	void popState();		// Pops the top pair, assigns the variable in state,
 					 // reduces direct domain conflicts, and sets state variable
+
+  public:
+	PipsAI(std::vector<Position> disabledTiles,
+		   std::vector<std::shared_ptr<Domino>> dominos,
+		   std::vector<std::shared_ptr<Constraint>> constraints);
+	PipsAI(const Pips<Width, Height> &startState);
+	std::optional<SolverState<Width, Height>> solve();
 };
 
 // Definitions
@@ -120,36 +117,36 @@ void SolverState<Width, Height>::initializeDomains(
 				for (const auto &domino : dominos) {
 					values = domino->getValues();
 					grid[{i, j}].insertInDomain(
-						Tile(values.first, domino, Orientation::Left));
+						{Tile(values.first, domino, Orientation::Left)});
 					grid[{i, j}].insertInDomain(
-						Tile(values.second, domino, Orientation::Left));
+						{Tile(values.second, domino, Orientation::Left)});
 				}
 			}
 			if (i + 1 < Height) {
 				for (const auto &domino : dominos) {
 					values = domino->getValues();
 					grid[{i, j}].insertInDomain(
-						Tile(values.first, domino, Orientation::Right));
+						{Tile(values.first, domino, Orientation::Right)});
 					grid[{i, j}].insertInDomain(
-						Tile(values.second, domino, Orientation::Right));
+						{Tile(values.second, domino, Orientation::Right)});
 				}
 			}
 			if (j - 1 >= 0) {
 				for (const auto &domino : dominos) {
 					values = domino->getValues();
 					grid[{i, j}].insertInDomain(
-						Tile(values.first, domino, Orientation::Up));
+						{Tile(values.first, domino, Orientation::Up)});
 					grid[{i, j}].insertInDomain(
-						Tile(values.second, domino, Orientation::Up));
+						{Tile(values.second, domino, Orientation::Up)});
 				}
 			}
 			if (j + 1 < Width) {
 				for (const auto &domino : dominos) {
 					values = domino->getValues();
 					grid[{i, j}].insertInDomain(
-						Tile(values.first, domino, Orientation::Down));
+						{Tile(values.first, domino, Orientation::Down)});
 					grid[{i, j}].insertInDomain(
-						Tile(values.second, domino, Orientation::Down));
+						{Tile(values.second, domino, Orientation::Down)});
 				}
 			}
 		}
@@ -189,8 +186,9 @@ template <int Width, int Height>
 std::unordered_map<Position, std::unordered_set<Tile>>
 SolverState<Width, Height>::assignVariable(Position position, Tile value) {
 	std::unordered_set<Tile> domain = grid[position].getDomain();
-	if (domain.find(value) == domain.end())
+	if (domain.find(value) == domain.end()) {
 		throw std::runtime_error("Cannot assign to a value not in domain");
+	}
 	domain.erase(value); // domain now holds elements to be removed
 	return pruneVariableDomain(position, domain);
 }
@@ -209,8 +207,8 @@ SolverState<Width, Height>::pruneVariableDomain(
 			continue;
 		complementRemoval = value.getComplement();
 		complementPosition = grid.getOther(position, value.getOrientation());
-		grid[complementPosition].pruneDomain(complementRemoval);
-		grid[position].pruneDomain(value);
+		grid[complementPosition].pruneDomain({complementRemoval});
+		grid[position].pruneDomain({value});
 		reductionMap[position].insert(value);
 		reductionMap[complementPosition].insert(complementRemoval);
 	}
@@ -230,6 +228,7 @@ template <int Width, int Height>
 SolverState<Width, Height>
 SolverState<Width, Height>::operator=(const SolverState<Width, Height> &other) {
 	grid = other.grid;
+	return *this;
 }
 
 template <int Width, int Height>
@@ -260,9 +259,11 @@ PipsAI<Width, Height>::PipsAI(
 	std::vector<Position> disabledTiles,
 	std::vector<std::shared_ptr<Domino>> dominos,
 	std::vector<std::shared_ptr<Constraint>> constraints)
-	: state(std::make_shared<SolverState<Width, Height>>(disabledTiles, dominos,
-														 constraints)),
-	  frontier{} {}
+	: dominos{dominos}, constraints{constraints}, state{disabledTiles},
+	  frontier{} {
+	std::cout << "initializing domains\n";
+	state.initializeDomains(dominos);
+}
 
 template <int Width, int Height>
 PipsAI<Width, Height>::PipsAI(const Pips<Width, Height> &startState)
@@ -274,6 +275,8 @@ bool PipsAI<Width, Height>::revise(Position position,
 	std::unordered_set<Tile> domain = state.grid[position].getDomain();
 	std::unordered_map<Position, std::unordered_set<Tile>> reductionMap;
 	bool revised = false;
+
+	std::cout << "Revising...\n";
 	for (const auto &value : domain) {
 
 		reductionMap = state.assignVariable(position, value);
@@ -285,6 +288,7 @@ bool PipsAI<Width, Height>::revise(Position position,
 			revised = true;
 		}
 	}
+	std::cout << "finished";
 	return revised;
 }
 
@@ -334,13 +338,18 @@ template <int Width, int Height> bool PipsAI<Width, Height>::GAC() {
 		}
 	}
 
+	std::cout << "Initialized GAC queue\n";
+
 	while (!queue.empty()) {
 		cPair = queue.front();
 		queue.pop();
 
-		if (revise(cPair.second, cPair.first)) {
+		std::cout << "Checking (" << cPair.second.row << ", "
+				  << cPair.second.col << ")\n";
 
-			if (state.grid[cPair.second].size() == 0) {
+		if (revise(cPair.second, *cPair.first)) {
+
+			if (state.grid[cPair.second].getDomain().size() == 0) {
 				return false; // unsolvable
 			}
 
@@ -359,6 +368,7 @@ template <int Width, int Height> bool PipsAI<Width, Height>::GAC() {
 				}
 			}
 		}
+		std::cout << "Unchagned domain from Revise\n";
 	}
 	return true;
 }
@@ -389,15 +399,31 @@ template <int Width, int Height> bool PipsAI<Width, Height>::solved() const {
 }
 
 template <int Width, int Height>
+void PipsAI<Width, Height>::pushState(Assignment action) {
+	frontier.emplace(state, action);
+}
+
+template <int Width, int Height> void PipsAI<Width, Height>::popState() {
+	std::pair<SolverState<Width, Height>, Assignment> pair = frontier.top();
+	frontier.pop();
+	state = pair.first;
+	if (pair.second.position.row != -1 && pair.second.position.col != -1)
+		state.assignVariable(pair.second.position, pair.second.value);
+}
+
+template <int Width, int Height>
 std::optional<SolverState<Width, Height>> PipsAI<Width, Height>::solve() {
 
 	// Frontier has <S, A> state-action pairs. Start state has no prev. action
-	frontier.emplace(state, {{-1, -1}, {}});
+	frontier.emplace(state, Assignment{Position{-1, -1}, Tile{}});
 
 	while (!frontier.empty()) {
-		popState();	 // Pop <S, A> and set new state S` <- T(S, A)
+		std::cout << "iterating\n";
+		popState(); // Pop <S, A> and set new state S` <- T(S, A)
+		std::cout << "running GAC\n";
 		if (GAC()) { // Run General Arc Consistency returns false if unsolvable
 
+			std::cout << "Finished GAC. Inside If block\n";
 			if (solved())
 				return {
 					state}; // TODO: solved() and Pips(SolverState) consturcter
@@ -412,6 +438,8 @@ std::optional<SolverState<Width, Height>> PipsAI<Width, Height>::solve() {
 				pushState({pos, value});
 			}
 		}
+
+		std::cout << "Finished GAC. Outside If block\n";
 	}
 
 	return std::nullopt;

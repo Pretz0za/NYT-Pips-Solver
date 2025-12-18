@@ -13,15 +13,12 @@ Variable::Variable(Tile tile) : inPlay(tile.inPlay), reductions{}, domain{} {
 }
 
 Variable &Variable::operator=(const Variable &other) {
-	if (inPlay != other.inPlay)
-		throw std::runtime_error(
-			"Cannot set inPlay Variable equal to not inPlay Variable");
 	domain = other.domain;
 	reductions = other.reductions;
 	return *this;
 }
 
-void Variable::insertInDomain(std::unordered_set<Tile> &values) {
+void Variable::insertInDomain(std::unordered_set<Tile> values) {
 	domain.merge(values);
 }
 

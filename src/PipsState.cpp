@@ -18,6 +18,9 @@ std::pair<int, int> Domino::getValues() const { return this->value; }
 
 // Tile Class ------------------------------------------------------------------
 
+Tile::Tile(bool inPlay)
+	: side{}, domino{nullptr}, orientation{}, inPlay(inPlay) {}
+
 Tile::Tile(bool side, std::shared_ptr<Domino> domino,
 		   std::pair<bool, bool> orientation, bool inPlay)
 	: side(side), domino(std::move(domino)),
@@ -25,7 +28,8 @@ Tile::Tile(bool side, std::shared_ptr<Domino> domino,
 
 Tile &Tile::operator=(const Tile &other) {
 	if (inPlay != other.inPlay)
-		throw std::runtime_error("Cannot set value of inPlay to not inPlay");
+		throw std::runtime_error(
+			"Cannot set value of inPlay Tile to not inPlay");
 	side = other.side;
 	domino = other.domino;
 	orientation = other.orientation;
