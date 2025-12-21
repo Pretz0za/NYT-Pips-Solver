@@ -59,9 +59,9 @@ class Tile {
 	bool side;
 	std::shared_ptr<Domino> domino;
 	std::pair<bool, bool> orientation;
+	bool active;
 
   public:
-	const bool inPlay;
 	Tile(bool inPlay = true);
 	Tile(bool side, std::shared_ptr<Domino>, std::pair<bool, bool> orientation,
 		 bool inPlay = true);
@@ -71,6 +71,8 @@ class Tile {
 	Tile getComplement() const {
 		return Tile(!side, domino, {orientation.first, !orientation.second});
 	}
+
+	bool inPlay() const { return active; };
 
 	bool operator==(const Tile &other) const {
 		return side == other.side && domino == other.domino &&
@@ -152,6 +154,8 @@ class Constraint {
 	virtual bool evaluate(std::span<Variable> values) const = 0;
 	virtual bool evaluate(std::span<Tile> values) const = 0;
 
+	virtual bool isBroken(std::vector<int> values) const = 0;
+
 	virtual ~Constraint() = default;
 };
 
@@ -161,6 +165,7 @@ class EqualConstraint : public Constraint {
 	virtual bool evaluate(std::span<int> values) const override;
 	virtual bool evaluate(std::span<Variable> values) const override;
 	virtual bool evaluate(std::span<Tile> values) const override;
+	virtual bool isBroken(std::vector<int> values) const override;
 	~EqualConstraint() = default;
 };
 
@@ -170,6 +175,7 @@ class UniqueConstraint : public Constraint {
 	virtual bool evaluate(std::span<int> values) const override;
 	virtual bool evaluate(std::span<Variable> values) const override;
 	virtual bool evaluate(std::span<Tile> values) const override;
+	virtual bool isBroken(std::vector<int> values) const override;
 	~UniqueConstraint() = default;
 };
 
@@ -182,6 +188,7 @@ class LessThanConstraint : public Constraint {
 	virtual bool evaluate(std::span<int> values) const override;
 	virtual bool evaluate(std::span<Variable> values) const override;
 	virtual bool evaluate(std::span<Tile> values) const override;
+	virtual bool isBroken(std::vector<int> values) const override;
 	~LessThanConstraint() = default;
 };
 
@@ -194,6 +201,7 @@ class GreaterThanConstraint : public Constraint {
 	virtual bool evaluate(std::span<int> values) const override;
 	virtual bool evaluate(std::span<Variable> values) const override;
 	virtual bool evaluate(std::span<Tile> values) const override;
+	virtual bool isBroken(std::vector<int> values) const override;
 	~GreaterThanConstraint() = default;
 };
 
@@ -206,6 +214,7 @@ class ExactSumConstraint : public Constraint {
 	virtual bool evaluate(std::span<int> values) const override;
 	virtual bool evaluate(std::span<Variable> values) const override;
 	virtual bool evaluate(std::span<Tile> values) const override;
+	virtual bool isBroken(std::vector<int> values) const override;
 	~ExactSumConstraint() = default;
 };
 
@@ -350,7 +359,7 @@ Pips<Width, Height>::getTiles(const std::vector<Position> &positions) const {
 template <int Width, int Height> bool Pips<Width, Height>::isSolved() const {
 	for (const auto &row : grid) {
 		for (const Tile &tile : row) {
-			if (!tile.getDomino() && tile.inPlay)
+			if (!tile.getDomino() && tile.inPlay())
 				return false;
 		}
 	}

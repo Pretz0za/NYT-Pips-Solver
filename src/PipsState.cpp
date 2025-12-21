@@ -19,17 +19,15 @@ std::pair<int, int> Domino::getValues() const { return this->value; }
 // Tile Class ------------------------------------------------------------------
 
 Tile::Tile(bool inPlay)
-	: side{}, domino{nullptr}, orientation{}, inPlay(inPlay) {}
+	: side{}, domino{nullptr}, orientation{}, active(inPlay) {}
 
 Tile::Tile(bool side, std::shared_ptr<Domino> domino,
 		   std::pair<bool, bool> orientation, bool inPlay)
 	: side(side), domino(std::move(domino)),
-	  orientation(std::move(orientation)), inPlay(inPlay) {}
+	  orientation(std::move(orientation)), active(inPlay) {}
 
 Tile &Tile::operator=(const Tile &other) {
-	if (inPlay != other.inPlay)
-		throw std::runtime_error(
-			"Cannot set value of inPlay Tile to not inPlay");
+	active = other.active;
 	side = other.side;
 	domino = other.domino;
 	orientation = other.orientation;
@@ -106,6 +104,16 @@ bool EqualConstraint::evaluate(std::span<Variable> values) const {
 	return true;
 }
 
+bool EqualConstraint::isBroken(std::vector<int> values) const {
+	if (values.empty())
+		return false;
+	for (int val : values) {
+		if (val != values[0])
+			return true;
+	}
+	return false;
+}
+
 UniqueConstraint::UniqueConstraint(std::vector<Position> tiles)
 	: Constraint(std::move(tiles)) {}
 bool UniqueConstraint::evaluate(std::span<int> values) const {
@@ -141,6 +149,16 @@ bool UniqueConstraint::evaluate(std::span<Variable> values) const {
 	return true;
 }
 
+bool UniqueConstraint::isBroken(std::vector<int> values) const {
+	std::set<int> seen;
+	for (int val : values) {
+		if (seen.find(val) != seen.end())
+			return true;
+		seen.insert(val);
+	}
+	return false;
+}
+
 LessThanConstraint::LessThanConstraint(std::vector<Position> tiles, int target)
 	: Constraint(std::move(tiles)), target(target) {}
 bool LessThanConstraint::evaluate(std::span<int> values) const {
@@ -169,8 +187,13 @@ bool LessThanConstraint::evaluate(std::span<Variable> values) const {
 
 int LessThanConstraint::getTarget() const { return target; }
 
+bool LessThanConstraint::isBroken(std::vector<int> values) const {
+	return std::accumulate(values.begin(), values.end(), 0) >= target;
+}
+
 GreaterThanConstraint::GreaterThanConstraint(std::vector<Position> tiles,
 											 int target)
+
 	: Constraint(std::move(tiles)), target(target) {}
 bool GreaterThanConstraint::evaluate(std::span<int> values) const {
 	int sum = std::accumulate(values.begin(), values.end(), 0);
@@ -197,6 +220,11 @@ bool GreaterThanConstraint::evaluate(std::span<Variable> values) const {
 
 int GreaterThanConstraint::getTarget() const { return target; }
 
+bool GreaterThanConstraint::isBroken(std::vector<int> values) const {
+	int maxExtra = (positions.size() - values.size()) * 6;
+	return std::accumulate(values.begin(), values.end(), maxExtra) <= target;
+}
+
 ExactSumConstraint::ExactSumConstraint(std::vector<Position> tiles, int target)
 	: Constraint(std::move(tiles)), target(target) {}
 bool ExactSumConstraint::evaluate(std::span<int> values) const {
@@ -222,5 +250,9 @@ bool ExactSumConstraint::evaluate(std::span<Variable> values) const {
 }
 
 int ExactSumConstraint::getTarget() const { return target; }
+
+bool ExactSumConstraint::isBroken(std::vector<int> values) const {
+	return std::accumulate(values.begin(), values.end(), 0) > target;
+}
 
 // End Constraint Classes ------------------------------------------------------

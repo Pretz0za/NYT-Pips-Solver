@@ -2,14 +2,15 @@
 #include <memory>
 #include <unordered_set>
 
-Variable::Variable(bool active) : inPlay(active) { domain = {}; }
+Variable::Variable(bool inPlay) : active(inPlay) { domain = {}; }
 
-Variable::Variable(Tile tile) : inPlay(tile.inPlay), domain{} {
-	if (tile.inPlay)
+Variable::Variable(Tile tile) : active(tile.inPlay()), domain{} {
+	if (tile.inPlay())
 		domain.insert(tile);
 }
 
 Variable &Variable::operator=(const Variable &other) {
+	active = other.active;
 	domain = other.domain;
 	return *this;
 }
