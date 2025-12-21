@@ -1,6 +1,7 @@
 #include "pips/PipsState.hpp"
 #include "helpers.hpp"
 #include "pips/PipsSolver.hpp"
+#include <algorithm>
 #include <cstdlib>
 #include <map>
 #include <memory>
@@ -304,6 +305,22 @@ bool EqualConstraint::evaluate(std::span<int> values) const {
 	return true;
 }
 
+std::vector<int> EqualConstraint::impossibleValues(
+	const std::vector<std::shared_ptr<Domino>> &dominos) const {
+	std::map<int, int> counts;
+	for (const auto &domino : dominos) {
+		counts[domino->getValues().first]++;
+		counts[domino->getValues().second]++;
+	}
+	std::vector<int> output;
+	for (const auto &pair : counts) {
+		if (pair.second < positions.size()) {
+			output.push_back(pair.first);
+		}
+	}
+	return output;
+}
+
 bool EqualConstraint::evaluate(std::span<Tile> values) const {
 	if (values.empty())
 		return true;
@@ -386,6 +403,11 @@ bool UniqueConstraint::isBroken(std::vector<int> values) const {
 	return false;
 }
 
+std::vector<int> UniqueConstraint::impossibleValues(
+	const std::vector<std::shared_ptr<Domino>> &dominos) const {
+	return {};
+}
+
 LessThanConstraint::LessThanConstraint(std::vector<Position> tiles, int target)
 	: Constraint(std::move(tiles)), target(target) {}
 bool LessThanConstraint::evaluate(std::span<int> values) const {
@@ -416,6 +438,25 @@ int LessThanConstraint::getTarget() const { return target; }
 
 bool LessThanConstraint::isBroken(std::vector<int> values) const {
 	return std::accumulate(values.begin(), values.end(), 0) >= target;
+}
+
+std::vector<int> LessThanConstraint::impossibleValues(
+	const std::vector<std::shared_ptr<Domino>> &dominos) const {
+	std::vector<int> output;
+	int zeroCount = 0;
+	for (const auto &domino : dominos) {
+		if (domino->getValues().first == 0)
+			zeroCount++;
+		if (domino->getValues().second == 0)
+			zeroCount++;
+	}
+	int nonZero = positions.size() - zeroCount - 1;
+
+	for (int i = 0; i < 7; i++) {
+		if (i >= target - std::min(nonZero, 0))
+			output.push_back(i);
+	}
+	return output;
 }
 
 GreaterThanConstraint::GreaterThanConstraint(std::vector<Position> tiles,
@@ -452,6 +493,17 @@ bool GreaterThanConstraint::isBroken(std::vector<int> values) const {
 	return std::accumulate(values.begin(), values.end(), maxExtra) <= target;
 }
 
+std::vector<int> GreaterThanConstraint::impossibleValues(
+	const std::vector<std::shared_ptr<Domino>> &dominos) const {
+	int min = target - 6 * (positions.size() - 1);
+	std::vector<int> output;
+	if (min >= 0)
+		for (int i = 0; i <= min; i++) {
+			output.push_back(i);
+		}
+	return output;
+}
+
 ExactSumConstraint::ExactSumConstraint(std::vector<Position> tiles, int target)
 	: Constraint(std::move(tiles)), target(target) {}
 bool ExactSumConstraint::evaluate(std::span<int> values) const {
@@ -482,4 +534,16 @@ bool ExactSumConstraint::isBroken(std::vector<int> values) const {
 	return std::accumulate(values.begin(), values.end(), 0) > target;
 }
 
-// End Constraint Classes ------------------------------------------------------
+std::vector<int> ExactSumConstraint::impossibleValues(
+	const std::vector<std::shared_ptr<Domino>> &dominos) const {
+	int min = target - 6 * (positions.size() - 1);
+	std::vector<int> output;
+	if (min >= 0)
+		for (int i = 0; i < min; i++) {
+			output.push_back(i);
+		}
+	return output;
+}
+
+// End Constraint Classes
+// ------------------------------------------------------

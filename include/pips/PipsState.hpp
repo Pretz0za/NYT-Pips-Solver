@@ -156,6 +156,8 @@ class Constraint {
 	virtual bool evaluate(std::span<Variable> values) const = 0;
 	virtual bool evaluate(std::span<Tile> values) const = 0;
 
+	virtual std::vector<int> impossibleValues(
+		const std::vector<std::shared_ptr<Domino>> &dominos) const = 0;
 	virtual bool isBroken(std::vector<int> values) const = 0;
 
 	virtual ~Constraint() = default;
@@ -167,6 +169,8 @@ class EqualConstraint : public Constraint {
 	virtual bool evaluate(std::span<int> values) const override;
 	virtual bool evaluate(std::span<Variable> values) const override;
 	virtual bool evaluate(std::span<Tile> values) const override;
+	virtual std::vector<int> impossibleValues(
+		const std::vector<std::shared_ptr<Domino>> &dominos) const override;
 	virtual bool isBroken(std::vector<int> values) const override;
 	~EqualConstraint() = default;
 };
@@ -177,6 +181,8 @@ class UniqueConstraint : public Constraint {
 	virtual bool evaluate(std::span<int> values) const override;
 	virtual bool evaluate(std::span<Variable> values) const override;
 	virtual bool evaluate(std::span<Tile> values) const override;
+	virtual std::vector<int> impossibleValues(
+		const std::vector<std::shared_ptr<Domino>> &dominos) const override;
 	virtual bool isBroken(std::vector<int> values) const override;
 	~UniqueConstraint() = default;
 };
@@ -190,6 +196,8 @@ class LessThanConstraint : public Constraint {
 	virtual bool evaluate(std::span<int> values) const override;
 	virtual bool evaluate(std::span<Variable> values) const override;
 	virtual bool evaluate(std::span<Tile> values) const override;
+	virtual std::vector<int> impossibleValues(
+		const std::vector<std::shared_ptr<Domino>> &dominos) const override;
 	virtual bool isBroken(std::vector<int> values) const override;
 	~LessThanConstraint() = default;
 };
@@ -203,6 +211,8 @@ class GreaterThanConstraint : public Constraint {
 	virtual bool evaluate(std::span<int> values) const override;
 	virtual bool evaluate(std::span<Variable> values) const override;
 	virtual bool evaluate(std::span<Tile> values) const override;
+	virtual std::vector<int> impossibleValues(
+		const std::vector<std::shared_ptr<Domino>> &dominos) const override;
 	virtual bool isBroken(std::vector<int> values) const override;
 	~GreaterThanConstraint() = default;
 };
@@ -216,6 +226,8 @@ class ExactSumConstraint : public Constraint {
 	virtual bool evaluate(std::span<int> values) const override;
 	virtual bool evaluate(std::span<Variable> values) const override;
 	virtual bool evaluate(std::span<Tile> values) const override;
+	virtual std::vector<int> impossibleValues(
+		const std::vector<std::shared_ptr<Domino>> &dominos) const override;
 	virtual bool isBroken(std::vector<int> values) const override;
 	~ExactSumConstraint() = default;
 };

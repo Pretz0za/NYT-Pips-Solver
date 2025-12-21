@@ -6,6 +6,7 @@
 #include <cassert>
 #include <chrono>
 #include <climits>
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <queue>
@@ -533,8 +534,48 @@ std::optional<SolverState<Width, Height>> PipsAI<Width, Height>::solve() {
 					 std::chrono::high_resolution_clock::now() - t)
 			  << '\n';
 
+	for (const auto &constraint : constraints) {
+		std::vector<int> impossible = constraint->impossibleValues(dominos);
+		for (const auto &position : constraint->getPositions()) {
+			for (const Tile &value : state.grid[position].getDomain()) {
+				if (std::find(impossible.begin(), impossible.end(),
+							  value.getValue()) != impossible.end()) {
+					state.pruneVariableDomain(position, value);
+				}
+			}
+		}
+	}
+
+	Position pos = state.MRV();
+	if (pos.row != -1 && pos.col != -1) {
+		for (const auto &value : state.grid[pos].getDomain()) {
+			pushState({pos, value});
+		}
+	}
+
+	// size_t maxSize = 0;
+	// std::shared_ptr<Constraint> maxSizeConstraint = nullptr;
+	// for (const auto &constraint : constraints) {
+	// 	if (constraint->getPositions().size() >= maxSize) {
+	// 		maxSize = constraint->getPositions().size();
+	// 		maxSizeConstraint = constraint;
+	// 	}
+	// }
+	// int minSize = 100000;
+	// Position minSizePosition{-1, -1};
+	// for (const auto &pos : maxSizeConstraint->getPositions()) {
+	// 	if (state.grid[pos].getDomain().size() < minSize) {
+	// 		minSize = state.grid[pos].getDomain().size();
+	// 		minSizePosition = pos;
+	// 	}
+	// }
+	//
+	// for (const Tile &value : state.grid[minSizePosition].getDomain()) {
+	// 	frontier.emplace(state, Assignment{minSizePosition, value});
+	// }
+	//
 	// Frontier has <S, A> state-action pairs. Start state has no prev. action
-	frontier.emplace(state, Assignment{Position{-1, -1}, Tile{}});
+	// frontier.emplace(state, Assignment{Position{-1, -1}, Tile{}});
 
 	std::vector<std::chrono::milliseconds> times{};
 
