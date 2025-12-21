@@ -4,6 +4,7 @@
 #include "pips/PipsState.hpp"
 #include <algorithm>
 #include <cassert>
+#include <chrono>
 #include <climits>
 #include <memory>
 #include <optional>
@@ -18,6 +19,7 @@
 
 class Variable {
 	std::unordered_set<Tile> domain;
+	bool assigned = false;
 	bool active;
 
   public:
@@ -26,12 +28,16 @@ class Variable {
 	Variable &operator=(const Variable &other);
 	bool inPlay() const { return active; };
 
+	void setAssigned();
+	bool isAssigned() const;
 	void insertInDomain(std::unordered_set<Tile> values);
 	void pruneDomain(const Tile &values);
 	void pushReduction(const std::unordered_set<Tile> &values);
 	void clearDomain() { domain.clear(); }
 	std::unordered_set<Tile> clearDomino(std::shared_ptr<Domino> domino);
 	std::unordered_set<Tile> getDomain() const { return domain; };
+
+	void printTile(int x) const;
 
 	~Variable() = default;
 };
@@ -63,7 +69,7 @@ template <int Width, int Height> class SolverState {
 	void initializeDomains(const std::vector<std::shared_ptr<Domino>> &dominos);
 
 	void undoReduction();
-	void printSolution() const;
+	void printSolution(const std::string &str) const;
 
 	bool isSolvable(const Constraint &constraint);
 	bool isImpossible(const Constraint &constraint) const;
@@ -173,16 +179,21 @@ void SolverState<Width, Height>::pushReductionMap() {
 }
 
 template <int Width, int Height>
-void SolverState<Width, Height>::printSolution() const {
-	for (int i = 0; i < Height; i++) {
-		for (int j = 0; j < Width; j++) {
+void SolverState<Width, Height>::printSolution(const std::string &str) const {
+	int x = 1;
+	int y = 2;
+	std::cout << "\x1b[?7l"; // disable auto wrap
+	std::cout << "\x1b[2J\x1b[H";
+	for (int i = 0; i < Height; i++, y += 4) {
+		x = 1;
+		for (int j = 0; j < Width; j++, x += 8) {
 			if (!grid[{i, j}].inPlay())
 				continue;
-			std::cout << "(" << i << ", " << j
-					  << ") : " << grid[{i, j}].getDomain().begin()->getValue()
-					  << "\n";
+			Tile value = *grid[{i, j}].getDomain().begin();
+			value.printTile(x, y - 1);
 		}
 	}
+	std::cout << '\n' << str << '\n';
 }
 
 template <int Width, int Height>
@@ -286,19 +297,17 @@ SolverState<Width, Height>::operator=(const SolverState<Width, Height> &other) {
 
 template <int Width, int Height>
 Position SolverState<Width, Height>::MRV() const {
-	// Returns the variable (and its domain) with the most
-	// constrained domain.
-	// --> Grid square with the minimum possible states after
-	// pruning.
+	// Returns the unassigned variable with the most constrained domain.
+	// --> Grid square with the minimum possible states after pruning.
 	Position minVar{-1, -1};
 	int minSize = INT_MAX;
 	int currSize;
 	for (int i = 0; i < Height; i++) {
 		for (int j = 0; j < Width; j++) {
-			if (!grid[{i, j}].inPlay())
+			if (!grid[{i, j}].inPlay() || grid[{i, j}].isAssigned())
 				continue;
 			currSize = grid[{i, j}].getDomain().size();
-			if (currSize != 1 && currSize < minSize) {
+			if (currSize < minSize) {
 				minSize = currSize;
 				minVar = Position{i, j};
 			}
@@ -313,9 +322,7 @@ PipsAI<Width, Height>::PipsAI(
 	std::vector<std::shared_ptr<Domino>> dominos,
 	std::vector<std::shared_ptr<Constraint>> constraints)
 	: dominos{dominos}, constraints{constraints}, state{disabledTiles},
-	  frontier{} {
-	state.initializeDomains(dominos);
-}
+	  frontier{} {}
 
 template <int Width, int Height>
 PipsAI<Width, Height>::PipsAI(const Pips<Width, Height> &startState)
@@ -340,12 +347,6 @@ bool PipsAI<Width, Height>::revise(Position position,
 
 	bool isSolvable, isBroken, isIncompatible;
 	for (const auto &value : domain) {
-
-		if (position == Position{4, 3} && value.getValue() == 5 &&
-			(value.getComplement().getValue() == 4 ||
-			 value.getComplement().getValue() == 6)) {
-			std::cout << "hello\n";
-		}
 
 		state.assignVariable(position, value);
 
@@ -430,7 +431,8 @@ bool SolverState<Width, Height>::isImpossible(
 }
 
 template <int Width, int Height> bool PipsAI<Width, Height>::GAC() {
-	std::queue<std::pair<std::shared_ptr<Constraint>, Position>> queue{};
+	std::queue<std::pair<std::shared_ptr<Constraint>, Position>>
+		queue{}; // TODO: Change to priority queue with |D(X)|
 	std::pair<std::shared_ptr<Constraint>, Position> cPair;
 	// Add every <C, X> pair where X in scope(C)
 	for (const auto &constraint : constraints) {
@@ -505,34 +507,54 @@ template <int Width, int Height> bool PipsAI<Width, Height>::popState() {
 	bool valid = true;
 	if (pair.second.position.row != -1 && pair.second.position.col != -1) {
 		state.assignVariable(pair.second.position, pair.second.value);
+		state.grid[pair.second.position].setAssigned();
+		state
+			.grid[state.grid.getOther(pair.second.position,
+									  pair.second.value.getOrientation())]
+			.setAssigned();
 		valid = !state.causedEmptyDomain();
 	}
 
 	if (!valid) {
 		if (!frontier.empty())
-			popState();
-		else
-			return false;
+			return popState();
 	}
-
-	return true;
+	return valid;
 }
 
 template <int Width, int Height>
 std::optional<SolverState<Width, Height>> PipsAI<Width, Height>::solve() {
 
+	auto t = std::chrono::high_resolution_clock::now();
+	std::cout << "initializing variable domains...\n";
+	state.initializeDomains(dominos);
+	std::cout << "initialized. took: "
+			  << std::chrono::duration_cast<std::chrono::milliseconds>(
+					 std::chrono::high_resolution_clock::now() - t)
+			  << '\n';
+
 	// Frontier has <S, A> state-action pairs. Start state has no prev. action
 	frontier.emplace(state, Assignment{Position{-1, -1}, Tile{}});
 
+	std::vector<std::chrono::milliseconds> times{};
+
+	std::cout << "beginning pruning...\n";
 	while (!frontier.empty()) {
 		// Pop <S, A> and set new state S` <- T(S, A). Return false if there is
 		// no valid S' in frontier.
+		auto t = std::chrono::high_resolution_clock::now();
 		if (popState() &&
 			GAC()) { // Run General Arc Consistency returns false if unsolvable
 
-			if (solved())
-				return {
-					state}; // TODO: solved() and Pips(SolverState) consturcter
+			if (solved()) {
+				int i = 1;
+				for (const auto &time : times) {
+					std::cout << "reduction/assignment #" << i
+							  << " took: " << time << '\n';
+					i++;
+				}
+				return {state};
+			} // TODO: solved() and Pips(SolverState) consturcter
 
 			Position pos = state.MRV();
 			// If MRV returns (-1, -1) it means |X| <= 1 for all X. But we have
@@ -544,6 +566,8 @@ std::optional<SolverState<Width, Height>> PipsAI<Width, Height>::solve() {
 				}
 			}
 		}
+		times.push_back(std::chrono::duration_cast<std::chrono::milliseconds>(
+			std::chrono::high_resolution_clock::now() - t));
 	}
 
 	return std::nullopt;

@@ -1,4 +1,5 @@
 #include "pips/PipsState.hpp"
+#include "helpers.hpp"
 #include "pips/PipsSolver.hpp"
 #include <cstdlib>
 #include <map>
@@ -52,6 +53,232 @@ void Tile::setDomino(std::shared_ptr<Domino> newDomino) {
 std::pair<bool, bool> Tile::getOrientation() const { return orientation; }
 void Tile::setOrientation(std::pair<bool, bool> newOrientation) {
 	orientation = newOrientation;
+}
+
+void Tile::printTile(int x, int y) const {
+
+	if (orientation == Orientation::Left) {
+		switch (getValue()) {
+		case 0:
+			printAt(x, y + 0, "--------");
+			printAt(x, y + 1, "|       |");
+			printAt(x, y + 2, "|       |");
+			printAt(x, y + 3, "|       |");
+			printAt(x, y + 4, "--------");
+			break;
+		case 1:
+			printAt(x, y + 0, "--------");
+			printAt(x, y + 1, "|       |");
+			printAt(x, y + 2, "|   x   |");
+			printAt(x, y + 3, "|       |");
+			printAt(x, y + 4, "--------");
+			break;
+		case 2:
+			printAt(x, y + 0, "--------");
+			printAt(x, y + 1, "|     x |");
+			printAt(x, y + 2, "|       |");
+			printAt(x, y + 3, "| x     |");
+			printAt(x, y + 4, "--------");
+			break;
+		case 3:
+			printAt(x, y + 0, "--------");
+			printAt(x, y + 1, "|     x |");
+			printAt(x, y + 2, "|   x   |");
+			printAt(x, y + 3, "| x     |");
+			printAt(x, y + 4, "--------");
+			break;
+		case 4:
+			printAt(x, y + 0, "--------");
+			printAt(x, y + 1, "| x   x |");
+			printAt(x, y + 2, "|       |");
+			printAt(x, y + 3, "| x   x |");
+			printAt(x, y + 4, "--------");
+			break;
+		case 5:
+			printAt(x, y + 0, "--------");
+			printAt(x, y + 1, "| x   x |");
+			printAt(x, y + 2, "|   x   |");
+			printAt(x, y + 3, "| x   x |");
+			printAt(x, y + 4, "--------");
+			break;
+		case 6:
+			printAt(x, y + 0, "--------");
+			printAt(x, y + 1, "| x x x |");
+			printAt(x, y + 2, "|       |");
+			printAt(x, y + 3, "| x x x |");
+			printAt(x, y + 4, "--------");
+			break;
+		}
+	} else if (orientation == Orientation::Right) {
+		switch (getValue()) {
+		case 0:
+			printAt(x, y + 0, " --------");
+			printAt(x, y + 1, "|       |");
+			printAt(x, y + 2, "|       |");
+			printAt(x, y + 3, "|       |");
+			printAt(x, y + 4, " --------");
+			break;
+		case 1:
+			printAt(x, y + 0, " --------");
+			printAt(x, y + 1, "|       |");
+			printAt(x, y + 2, "|   x   |");
+			printAt(x, y + 3, "|       |");
+			printAt(x, y + 4, " --------");
+			break;
+		case 2:
+			printAt(x, y + 0, " --------");
+			printAt(x, y + 1, "| x     |");
+			printAt(x, y + 2, "|       |");
+			printAt(x, y + 3, "|     x |");
+			printAt(x, y + 4, " --------");
+			break;
+		case 3:
+			printAt(x, y + 0, " --------");
+			printAt(x, y + 1, "| x     |");
+			printAt(x, y + 2, "|   x   |");
+			printAt(x, y + 3, "|     x |");
+			printAt(x, y + 4, " --------");
+			break;
+		case 4:
+			printAt(x, y + 0, " --------");
+			printAt(x, y + 1, "| x   x |");
+			printAt(x, y + 2, "|       |");
+			printAt(x, y + 3, "| x   x |");
+			printAt(x, y + 4, " --------");
+			break;
+		case 5:
+			printAt(x, y + 0, " --------");
+			printAt(x, y + 1, "| x   x ");
+			printAt(x, y + 2, "|   x   ");
+			printAt(x, y + 3, "| x   x ");
+			printAt(x, y + 4, " --------");
+			break;
+		case 6:
+			printAt(x, y + 0, " --------");
+			printAt(x, y + 1, "| x x x ");
+			printAt(x, y + 2, "|       ");
+			printAt(x, y + 3, "| x x x ");
+			printAt(x, y + 4, " --------");
+			break;
+		}
+	} else if (orientation == Orientation::Up) {
+
+		switch (getValue()) {
+		case 0:
+			printAt(x, y + 0, "| ----- |");
+			printAt(x, y + 1, "|       |");
+			printAt(x, y + 2, "|       |");
+			printAt(x, y + 3, "|       |");
+			printAt(x, y + 4, " -------");
+			break;
+
+		case 1:
+			printAt(x, y + 0, "| ----- |");
+			printAt(x, y + 1, "|       |");
+			printAt(x, y + 2, "|   x   |");
+			printAt(x, y + 3, "|       |");
+			printAt(x, y + 4, " -------");
+			break;
+
+		case 2:
+			printAt(x, y + 0, "| ----- |");
+			printAt(x, y + 1, "|     x |");
+			printAt(x, y + 2, "|       |");
+			printAt(x, y + 3, "| x     |");
+			printAt(x, y + 4, " -------");
+			break;
+
+		case 3:
+			printAt(x, y + 0, "| ----- |");
+			printAt(x, y + 1, "|     x |");
+			printAt(x, y + 2, "|   x   |");
+			printAt(x, y + 3, "| x     |");
+			printAt(x, y + 4, " -------");
+			break;
+
+		case 4:
+			printAt(x, y + 0, "| ----- |");
+			printAt(x, y + 1, "| x   x |");
+			printAt(x, y + 2, "|       |");
+			printAt(x, y + 3, "| x   x |");
+			printAt(x, y + 4, " -------");
+			break;
+
+		case 5:
+			printAt(x, y + 0, "| ----- |");
+			printAt(x, y + 1, "| x   x |");
+			printAt(x, y + 2, "|   x   |");
+			printAt(x, y + 3, "| x   x |");
+			printAt(x, y + 4, " -------");
+			break;
+
+		case 6:
+			printAt(x, y + 0, "| ----- |");
+			printAt(x, y + 1, "| x   x |");
+			printAt(x, y + 2, "| x   x |");
+			printAt(x, y + 3, "| x   x |");
+			printAt(x, y + 4, " -------");
+			break;
+		}
+	} else {
+		switch (getValue()) {
+		case 0:
+			printAt(x, y + 0, " -------");
+			printAt(x, y + 1, "|       |");
+			printAt(x, y + 2, "|       |");
+			printAt(x, y + 3, "|       |");
+			printAt(x, y + 4, "| ----- |");
+			break;
+
+		case 1:
+			printAt(x, y + 0, " -------");
+			printAt(x, y + 1, "|       |");
+			printAt(x, y + 2, "|   x   |");
+			printAt(x, y + 3, "|       |");
+			printAt(x, y + 4, "| ----- |");
+			break;
+
+		case 2:
+			printAt(x, y + 0, " -------");
+			printAt(x, y + 1, "| x     |");
+			printAt(x, y + 2, "|       |");
+			printAt(x, y + 3, "|     x |");
+			printAt(x, y + 4, "| ----- |");
+			break;
+
+		case 3:
+			printAt(x, y + 0, " -------");
+			printAt(x, y + 1, "| x     |");
+			printAt(x, y + 2, "|   x   |");
+			printAt(x, y + 3, "|     x |");
+			printAt(x, y + 4, "| ----- |");
+			break;
+
+		case 4:
+			printAt(x, y + 0, " -------");
+			printAt(x, y + 1, "| x   x |");
+			printAt(x, y + 2, "|       |");
+			printAt(x, y + 3, "| x   x |");
+			printAt(x, y + 4, "| ----- |");
+			break;
+
+		case 5:
+			printAt(x, y + 0, " -------");
+			printAt(x, y + 1, "| x   x |");
+			printAt(x, y + 2, "|   x   |");
+			printAt(x, y + 3, "| x   x |");
+			printAt(x, y + 4, "| ----- |");
+			break;
+
+		case 6:
+			printAt(x, y + 0, " -------");
+			printAt(x, y + 1, "| x   x |");
+			printAt(x, y + 2, "| x   x |");
+			printAt(x, y + 3, "| x   x |");
+			printAt(x, y + 4, "| ----- |");
+			break;
+		}
+	}
 }
 
 // End Tile Class --------------------------------------------------------------

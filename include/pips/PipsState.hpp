@@ -93,6 +93,8 @@ class Tile {
 	std::pair<bool, bool> getOrientation() const;
 	void setOrientation(std::pair<bool, bool> newOrientation);
 
+	void printTile(int x, int y) const;
+
 	~Tile() = default;
 };
 

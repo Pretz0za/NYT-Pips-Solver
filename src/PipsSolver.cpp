@@ -2,18 +2,23 @@
 #include <memory>
 #include <unordered_set>
 
-Variable::Variable(bool inPlay) : active(inPlay) { domain = {}; }
+Variable::Variable(bool inPlay) : active(inPlay), assigned{false}, domain{} {}
 
-Variable::Variable(Tile tile) : active(tile.inPlay()), domain{} {
+Variable::Variable(Tile tile)
+	: active(tile.inPlay()), domain{}, assigned(false) {
 	if (tile.inPlay())
 		domain.insert(tile);
 }
 
 Variable &Variable::operator=(const Variable &other) {
+	assigned = other.assigned;
 	active = other.active;
 	domain = other.domain;
 	return *this;
 }
+
+void Variable::setAssigned() { assigned = true; }
+bool Variable::isAssigned() const { return assigned; }
 
 void Variable::insertInDomain(std::unordered_set<Tile> values) {
 	domain.merge(values);
