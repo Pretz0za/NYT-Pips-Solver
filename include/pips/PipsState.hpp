@@ -7,9 +7,7 @@
 #include <cstdlib>
 #include <initializer_list>
 #include <iostream>
-#include <map>
 #include <memory>
-#include <set>
 #include <span>
 #include <stdexcept>
 #include <utility>
@@ -126,6 +124,8 @@ template <int Width, int Height, typename K> class Grid {
 	Grid();
 	Grid(const std::vector<Position> &disabledTiles);
 	std::array<std::array<K, Width>, Height> getGrid() const;
+
+	bool inBounds(const Position &pos) const;
 
 	K &operator[](const Position &pos);
 	const K &operator[](const Position &pos) const;
@@ -249,7 +249,7 @@ template <int Width, int Height, typename K>
 Grid<Width, Height, K>::Grid(const std::vector<Position> &disabledTiles)
 	: grid{{K()}} {
 	for (const auto &pos : disabledTiles) {
-		if (pos.row >= Width || pos.col >= Height)
+		if (!inBounds(pos))
 			throw std::runtime_error("Disabled tiles out of bounds");
 		grid[pos.row][pos.col] = K(false);
 	}
@@ -257,15 +257,21 @@ Grid<Width, Height, K>::Grid(const std::vector<Position> &disabledTiles)
 
 template <int Width, int Height, typename K>
 K &Grid<Width, Height, K>::operator[](const Position &pos) {
-	if (pos.row >= Height || pos.col >= Width) {
+	if (!inBounds(pos)) {
 		throw std::runtime_error("Indexed position out of bounds");
 	}
 	return grid[pos.row][pos.col];
 }
 
 template <int Width, int Height, typename K>
+bool Grid<Width, Height, K>::inBounds(const Position &pos) const {
+	return (pos.row < Height && pos.col < Width && pos.row >= 0 &&
+			pos.col >= 0);
+}
+
+template <int Width, int Height, typename K>
 const K &Grid<Width, Height, K>::operator[](const Position &pos) const {
-	if (pos.row >= Height || pos.col >= Width) {
+	if (!inBounds(pos)) {
 		throw std::runtime_error("Indexed position out of bounds");
 	}
 	return grid[pos.row][pos.col];

@@ -177,30 +177,6 @@ src/PipsState.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/solver.dir/build.make CMakeFiles/solver.dir/src/PipsState.cpp.s
 .PHONY : src/PipsState.cpp.s
 
-src/helpers.o: src/helpers.cpp.o
-.PHONY : src/helpers.o
-
-# target to build an object file
-src/helpers.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/solver.dir/build.make CMakeFiles/solver.dir/src/helpers.cpp.o
-.PHONY : src/helpers.cpp.o
-
-src/helpers.i: src/helpers.cpp.i
-.PHONY : src/helpers.i
-
-# target to preprocess a source file
-src/helpers.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/solver.dir/build.make CMakeFiles/solver.dir/src/helpers.cpp.i
-.PHONY : src/helpers.cpp.i
-
-src/helpers.s: src/helpers.cpp.s
-.PHONY : src/helpers.s
-
-# target to generate assembly for a file
-src/helpers.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/solver.dir/build.make CMakeFiles/solver.dir/src/helpers.cpp.s
-.PHONY : src/helpers.cpp.s
-
 src/main.o: src/main.cpp.o
 .PHONY : src/main.o
 
@@ -240,9 +216,6 @@ help:
 	@echo "... src/PipsState.o"
 	@echo "... src/PipsState.i"
 	@echo "... src/PipsState.s"
-	@echo "... src/helpers.o"
-	@echo "... src/helpers.i"
-	@echo "... src/helpers.s"
 	@echo "... src/main.o"
 	@echo "... src/main.i"
 	@echo "... src/main.s"

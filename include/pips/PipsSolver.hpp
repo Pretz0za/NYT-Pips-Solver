@@ -17,8 +17,6 @@
 
 class Variable {
 	std::unordered_set<Tile> domain;
-	std::vector<std::unordered_set<Tile>> reductions;
-	Position position;
 
   public:
 	const bool inPlay;
@@ -26,11 +24,11 @@ class Variable {
 	Variable(Tile tile);
 	Variable &operator=(const Variable &other);
 
-	void undo();
 	void insertInDomain(std::unordered_set<Tile> values);
-	void pruneDomain(const std::unordered_set<Tile> &values);
+	void pruneDomain(const Tile &values);
 	void pushReduction(const std::unordered_set<Tile> &values);
-	void assign(const Tile &value);
+	void clearDomain() { domain.clear(); }
+	std::unordered_set<Tile> clearDomino(std::shared_ptr<Domino> domino);
 	std::unordered_set<Tile> getDomain() const { return domain; };
 
 	~Variable() = default;
@@ -44,31 +42,35 @@ struct Assignment {
 template <int Width, int Height> class SolverState {
 	Grid<Width, Height, Variable> grid;
 
+	std::stack<std::unordered_map<Position, std::unordered_set<Tile>>>
+		reductions;
+	std::unordered_map<Position, std::unordered_set<Tile>> reductionMap;
+
+	void clearDominoFromDomains(std::shared_ptr<Domino> domino);
+	void clearDomain(const Position &position);
+
+	void pushReductionMap();
+
   public:
 	SolverState(std::vector<Position> disabledTiles);
 	SolverState(const Pips<Width, Height> &startState);
-
-	void initializeDomains(const std::vector<std::shared_ptr<Domino>> &dominos);
-
 	SolverState(const SolverState<Width, Height> &other);
 	SolverState<Width, Height>
 	operator=(const SolverState<Width, Height> &other);
 
+	void initializeDomains(const std::vector<std::shared_ptr<Domino>> &dominos);
+
+	void undoReduction();
+
 	bool isSolvable(const Constraint &constraint);
 
-	std::unordered_map<Position, std::unordered_set<Tile>> pruneVariableDomain(
+	void pruneVariableDomain(
 		Position position,
-		const std::unordered_set<Tile>
-			&removed); // For each value in removed, it removes the value from
-					   // the domain, and also the complement value from the
-					   // complement variable's domain.
+		const Tile &removed); // For each value in removed, it removes the value
+							  // from the domain, and also the complement value
+							  // from the complement variable's domain.
 
-	void
-	undoReduction(const std::unordered_map<Position, std::unordered_set<Tile>>
-					  &reductionMap);
-
-	std::unordered_map<Position, std::unordered_set<Tile>>
-	assignVariable(Position position, Tile value);
+	void assignVariable(Position position, Tile value);
 
 	bool isSolved() const;
 	Position MRV() const;
@@ -113,42 +115,74 @@ void SolverState<Width, Height>::initializeDomains(
 	std::pair<int, int> values;
 	for (int i = 0; i < Height; i++) {
 		for (int j = 0; j < Width; j++) {
-			if (i - 1 >= 0) {
-				for (const auto &domino : dominos) {
-					values = domino->getValues();
-					grid[{i, j}].insertInDomain(
-						{Tile(values.first, domino, Orientation::Left)});
-					grid[{i, j}].insertInDomain(
-						{Tile(values.second, domino, Orientation::Left)});
-				}
-			}
-			if (i + 1 < Height) {
-				for (const auto &domino : dominos) {
-					values = domino->getValues();
-					grid[{i, j}].insertInDomain(
-						{Tile(values.first, domino, Orientation::Right)});
-					grid[{i, j}].insertInDomain(
-						{Tile(values.second, domino, Orientation::Right)});
-				}
-			}
 			if (j - 1 >= 0) {
 				for (const auto &domino : dominos) {
 					values = domino->getValues();
 					grid[{i, j}].insertInDomain(
-						{Tile(values.first, domino, Orientation::Up)});
+						{Tile(true, domino, Orientation::Left)});
 					grid[{i, j}].insertInDomain(
-						{Tile(values.second, domino, Orientation::Up)});
+						{Tile(false, domino, Orientation::Left)});
 				}
 			}
 			if (j + 1 < Width) {
 				for (const auto &domino : dominos) {
 					values = domino->getValues();
 					grid[{i, j}].insertInDomain(
-						{Tile(values.first, domino, Orientation::Down)});
+						{Tile(true, domino, Orientation::Right)});
 					grid[{i, j}].insertInDomain(
-						{Tile(values.second, domino, Orientation::Down)});
+						{Tile(false, domino, Orientation::Right)});
 				}
 			}
+			if (i - 1 >= 0) {
+				for (const auto &domino : dominos) {
+					values = domino->getValues();
+					grid[{i, j}].insertInDomain(
+						{Tile(true, domino, Orientation::Up)});
+					grid[{i, j}].insertInDomain(
+						{Tile(false, domino, Orientation::Up)});
+				}
+			}
+			if (i + 1 < Height) {
+				for (const auto &domino : dominos) {
+					values = domino->getValues();
+					grid[{i, j}].insertInDomain(
+						{Tile(true, domino, Orientation::Down)});
+					grid[{i, j}].insertInDomain(
+						{Tile(false, domino, Orientation::Down)});
+				}
+			}
+		}
+	}
+}
+
+template <int Width, int Height>
+void SolverState<Width, Height>::pushReductionMap() {
+	reductions.push(reductionMap);
+	reductionMap.clear();
+}
+
+template <int Width, int Height>
+void SolverState<Width, Height>::clearDomain(const Position &position) {
+	std::unordered_set<Tile> domain = grid[position].getDomain();
+
+	for (const auto &value : domain) {
+		// Remove Complements
+		Position complementPosition =
+			grid.getOther(position, value.getOrientation());
+		grid[complementPosition].pruneDomain({value.getComplement()});
+		reductionMap[complementPosition].insert(value.getComplement());
+	}
+
+	reductionMap[position].merge(domain);
+	grid[position].clearDomain(); // TODO: make this;
+}
+
+template <int Width, int Height>
+void SolverState<Width, Height>::clearDominoFromDomains(
+	std::shared_ptr<Domino> domino) {
+	for (int i = 0; i < Height; i++) {
+		for (int j = 0; j < Width; j++) {
+			reductionMap[{i, j}].merge(grid[{i, j}].clearDomino(domino));
 		}
 	}
 }
@@ -183,45 +217,36 @@ bool SolverState<Width, Height>::isSolved() const {
 }
 
 template <int Width, int Height>
-std::unordered_map<Position, std::unordered_set<Tile>>
-SolverState<Width, Height>::assignVariable(Position position, Tile value) {
-	std::unordered_set<Tile> domain = grid[position].getDomain();
-	if (domain.find(value) == domain.end()) {
-		throw std::runtime_error("Cannot assign to a value not in domain");
-	}
-	domain.erase(value); // domain now holds elements to be removed
-	return pruneVariableDomain(position, domain);
+void SolverState<Width, Height>::assignVariable(Position position, Tile value) {
+	if (!grid.inBounds(position))
+		throw std::runtime_error("Can't assign to out of bounds Variable");
+
+	Tile complement = value.getComplement();
+	Position complementPosition =
+		grid.getOther(position, value.getOrientation());
+
+	clearDominoFromDomains(value.getDomino()); // TODO: Make this;
+	clearDomain(position);					   // TODO: Make this;
+	clearDomain(complementPosition);
+
+	grid[position].insertInDomain({value});
+	grid[complementPosition].insertInDomain({complement});
+
+	pushReductionMap(); // TODO: Make this;
 }
 
 template <int Width, int Height>
-std::unordered_map<Position, std::unordered_set<Tile>>
-SolverState<Width, Height>::pruneVariableDomain(
-	Position position, const std::unordered_set<Tile> &removed) {
-	std::unordered_set<Tile> domain = grid[position].getDomain();
-	std::unordered_map<Position, std::unordered_set<Tile>> reductionMap{};
-	const std::unordered_set<Tile> removedComplements;
-	Tile complementRemoval;
-	Position complementPosition;
-	for (const auto value : removed) {
-		if (domain.find(value) == domain.end())
-			continue;
-		complementRemoval = value.getComplement();
-		complementPosition = grid.getOther(position, value.getOrientation());
-		grid[complementPosition].pruneDomain({complementRemoval});
-		grid[position].pruneDomain({value});
-		reductionMap[position].insert(value);
-		reductionMap[complementPosition].insert(complementRemoval);
-	}
-	return reductionMap;
+void SolverState<Width, Height>::pruneVariableDomain(Position position,
+													 const Tile &removed) {
+	grid[position].pruneDomain(removed);
 }
 
 template <int Width, int Height>
-void SolverState<Width, Height>::undoReduction(
-	const std::unordered_map<Position, std::unordered_set<Tile>>
-		&reductionMap) {
-	for (const auto &pair : reductionMap) {
+void SolverState<Width, Height>::undoReduction() {
+	for (const auto &pair : reductions.top()) {
 		grid[pair.first].insertInDomain(pair.second);
 	}
+	reductions.pop();
 }
 
 template <int Width, int Height>
@@ -273,18 +298,17 @@ template <int Width, int Height>
 bool PipsAI<Width, Height>::revise(Position position,
 								   const Constraint &constraint) {
 	std::unordered_set<Tile> domain = state.grid[position].getDomain();
-	std::unordered_map<Position, std::unordered_set<Tile>> reductionMap;
 	bool revised = false;
 
 	std::cout << "Revising...\n";
 	for (const auto &value : domain) {
 
-		reductionMap = state.assignVariable(position, value);
+		state.assignVariable(position, value);
 		bool isSolvable = state.isSolvable(constraint);
-		state.undoReduction(reductionMap);
+		state.undoReduction();
 
 		if (!isSolvable) {
-			state.pruneVariableDomain(position, {value});
+			state.pruneVariableDomain(position, value);
 			revised = true;
 		}
 	}
@@ -309,20 +333,20 @@ bool SolverState<Width, Height>::isSolvable(const Constraint &constraint) {
 		}
 	}
 
-	if (choice.row == -1 && choice.col == -1)
+	if (!grid.inBounds(choice))
 		return constraint.evaluate(variables);
 
 	std::unordered_set<Tile> domain = grid[choice].getDomain();
-	std::unordered_map<Position, std::unordered_set<Tile>> reductionMap;
 	for (const auto &value : domain) {
-		reductionMap = assignVariable(choice, value);
-
 		// TODO: if (!isImpossible && isSolvable) return true;  (Early out for
 		// cheaper computation)
 
-		if (isSolvable(constraint))
+		assignVariable(choice, value);
+		bool isSolvable = this->isSolvable(constraint);
+		undoReduction();
+
+		if (isSolvable)
 			return true;
-		undoReduction(reductionMap);
 	}
 
 	return false;

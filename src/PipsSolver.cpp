@@ -1,20 +1,16 @@
 #include "pips/PipsSolver.hpp"
-#include <stdexcept>
+#include <memory>
 #include <unordered_set>
 
-Variable::Variable(bool active) : inPlay(active) {
-	domain = {};
-	reductions = {};
-}
+Variable::Variable(bool active) : inPlay(active) { domain = {}; }
 
-Variable::Variable(Tile tile) : inPlay(tile.inPlay), reductions{}, domain{} {
+Variable::Variable(Tile tile) : inPlay(tile.inPlay), domain{} {
 	if (tile.inPlay)
 		domain.insert(tile);
 }
 
 Variable &Variable::operator=(const Variable &other) {
 	domain = other.domain;
-	reductions = other.reductions;
 	return *this;
 }
 
@@ -22,29 +18,16 @@ void Variable::insertInDomain(std::unordered_set<Tile> values) {
 	domain.merge(values);
 }
 
-void Variable::pruneDomain(const std::unordered_set<Tile> &values) {
-	for (const auto &val : values) {
-		domain.erase(val);
+std::unordered_set<Tile> Variable::clearDomino(std::shared_ptr<Domino> domino) {
+	std::unordered_set<Tile> reduction{};
+	std::unordered_set<Tile> originalDomain = domain;
+	for (const auto &tile : originalDomain) {
+		if (tile.getDomino() == domino) {
+			reduction.insert(tile);
+			domain.erase(tile);
+		}
 	}
+	return reduction;
 }
 
-void Variable::pushReduction(const std::unordered_set<Tile> &values) {
-	reductions.push_back(values);
-}
-
-void Variable::assign(const Tile &value) {
-	if (domain.find(value) == domain.end())
-		throw std::runtime_error("Variable::assign value not in domain");
-	domain.erase(value);
-	reductions.push_back(domain);
-	domain.clear();
-	domain.insert(value);
-}
-
-void Variable::undo() {
-	if (reductions.empty())
-		return;
-	auto reduction = reductions.back();
-	reductions.pop_back();
-	domain.merge(reduction);
-}
+void Variable::pruneDomain(const Tile &value) { domain.erase(value); }
