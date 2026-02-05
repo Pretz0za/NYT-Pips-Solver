@@ -3,6 +3,7 @@
 A high-performance constraint satisfaction solver for the New York Times domino tiling puzzle, Pips.
 
 ![Feb 04 Hard Pips Puzzle](./assets/puzzleEx.png)
+<img src="./assets/puzzleEx.png" alt="Feb 04 2026 Hard Pips Puzzle" width="500">
 
 ## Overview
 
@@ -40,14 +41,15 @@ in the build directory. Or compile manually, as there aren't many pieces to this
 This will run src/main.cpp, which sets up the state to be solved.
 
 ## Output
-![Feb 04 Hard Pips Solution](./assets/solutionEx.png)
+<img src="./assets/solutionEx.png" alt="Feb 04 2026 Hard Pips Solution" width="500">
 
 ## Algorithm Details
 
 The solver uses a combination of:
-- **Arc consistency**: Ensures every domino placement is compatible with remaining possibilities
 - **Forward checking**: Removes values from future variables after each assignment
-- **Constraint propagation**: Recursively enforces consistency across the entire grid
+- **Generalized Arc Consistency (GAC)**: Ensures for every value in the domain of a tile, there exist valid values for all other tiles that share a constraint
+- **Minimum Remaining Values (MRV) hueristic**: Searches the space in an intellegent order to minimize the search space.
+- **Domain minimization**: Ensures the values in each tile don't directly contradict a constraint
 - **Intelligent backtracking**: Prunes branches early when contradictions are detected
 
 ## Performance Notes
