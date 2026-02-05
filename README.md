@@ -2,7 +2,6 @@
 
 A high-performance constraint satisfaction solver for the New York Times domino tiling puzzle, Pips.
 
-![Feb 04 Hard Pips Puzzle](./assets/puzzleEx.png)
 <img src="./assets/puzzleEx.png" alt="Feb 04 2026 Hard Pips Puzzle" width="500">
 
 ## Overview
