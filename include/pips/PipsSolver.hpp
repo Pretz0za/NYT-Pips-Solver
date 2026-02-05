@@ -70,7 +70,7 @@ template <int Width, int Height> class SolverState {
 	void initializeDomains(const std::vector<std::shared_ptr<Domino>> &dominos);
 
 	void undoReduction();
-	void printSolution(const std::string &str) const;
+	void printBoard(const std::string &str) const;
 
 	bool isSolvable(const Constraint &constraint);
 	bool isImpossible(const Constraint &constraint) const;
@@ -180,15 +180,14 @@ void SolverState<Width, Height>::pushReductionMap() {
 }
 
 template <int Width, int Height>
-void SolverState<Width, Height>::printSolution(const std::string &str) const {
+void SolverState<Width, Height>::printBoard(const std::string &str) const {
 	int x = 1;
 	int y = 2;
-	std::cout << "\x1b[?7l"; // disable auto wrap
 	std::cout << "\x1b[2J\x1b[H";
 	for (int i = 0; i < Height; i++, y += 4) {
 		x = 1;
 		for (int j = 0; j < Width; j++, x += 8) {
-			if (!grid[{i, j}].inPlay())
+			if (!grid[{i, j}].inPlay() || !grid[{i, j}].isAssigned())
 				continue;
 			Tile value = *grid[{i, j}].getDomain().begin();
 			value.printTile(x, y - 1);
@@ -477,7 +476,8 @@ template <int Width, int Height> bool PipsAI<Width, Height>::solved() const {
 		for (int j = 0; j < Width; j++) {
 			if (!state.grid[{i, j}].inPlay())
 				continue;
-			if (state.grid[{i, j}].getDomain().size() != 1)
+			if (state.grid[{i, j}].getDomain().size() != 1 ||
+				!state.grid[{i, j}].isAssigned())
 				return false;
 		}
 	}
@@ -527,13 +527,14 @@ template <int Width, int Height>
 std::optional<SolverState<Width, Height>> PipsAI<Width, Height>::solve() {
 
 	auto t = std::chrono::high_resolution_clock::now();
-	std::cout << "initializing variable domains...\n";
+	std::cout << "initializing domains and search tree...\n";
 	state.initializeDomains(dominos);
-	std::cout << "initialized. took: "
-			  << std::chrono::duration_cast<std::chrono::milliseconds>(
-					 std::chrono::high_resolution_clock::now() - t)
-			  << '\n';
+	auto t1 = std::chrono::duration_cast<std::chrono::milliseconds>(
+		std::chrono::high_resolution_clock::now() - t);
 
+	t = std::chrono::high_resolution_clock::now();
+	std::cout << "removing constraint breaking values and choosing where to "
+				 "being search: \n";
 	for (const auto &constraint : constraints) {
 		std::vector<int> impossible = constraint->impossibleValues(dominos);
 		for (const auto &position : constraint->getPositions()) {
@@ -545,44 +546,22 @@ std::optional<SolverState<Width, Height>> PipsAI<Width, Height>::solve() {
 			}
 		}
 	}
-
 	Position pos = state.MRV();
 	if (pos.row != -1 && pos.col != -1) {
 		for (const auto &value : state.grid[pos].getDomain()) {
 			pushState({pos, value});
 		}
 	}
+	auto t2 = std::chrono::duration_cast<std::chrono::milliseconds>(
+		std::chrono::high_resolution_clock::now() - t);
 
-	// size_t maxSize = 0;
-	// std::shared_ptr<Constraint> maxSizeConstraint = nullptr;
-	// for (const auto &constraint : constraints) {
-	// 	if (constraint->getPositions().size() >= maxSize) {
-	// 		maxSize = constraint->getPositions().size();
-	// 		maxSizeConstraint = constraint;
-	// 	}
-	// }
-	// int minSize = 100000;
-	// Position minSizePosition{-1, -1};
-	// for (const auto &pos : maxSizeConstraint->getPositions()) {
-	// 	if (state.grid[pos].getDomain().size() < minSize) {
-	// 		minSize = state.grid[pos].getDomain().size();
-	// 		minSizePosition = pos;
-	// 	}
-	// }
-	//
-	// for (const Tile &value : state.grid[minSizePosition].getDomain()) {
-	// 	frontier.emplace(state, Assignment{minSizePosition, value});
-	// }
-	//
-	// Frontier has <S, A> state-action pairs. Start state has no prev. action
-	// frontier.emplace(state, Assignment{Position{-1, -1}, Tile{}});
-
+	std::chrono::milliseconds t3(0);
 	std::vector<std::chrono::milliseconds> times{};
-
-	std::cout << "beginning pruning...\n";
+	std::cout << "beginning search..." << std::endl;
 	while (!frontier.empty()) {
 		// Pop <S, A> and set new state S` <- T(S, A). Return false if there is
 		// no valid S' in frontier.
+		state.printBoard("");
 		auto t = std::chrono::high_resolution_clock::now();
 		if (popState() &&
 			GAC()) { // Run General Arc Consistency returns false if unsolvable
@@ -592,7 +571,16 @@ std::optional<SolverState<Width, Height>> PipsAI<Width, Height>::solve() {
 				for (const auto &time : times) {
 					std::cout << "reduction/assignment #" << i
 							  << " took: " << time << '\n';
+					t3 += time;
 					i++;
+				}
+				std::cout << "total solve time: " << t1 + t2 + t3 << '\n';
+				for (int i = 0; i < Height; i++) {
+					for (int j = 0; j < Width; j++) {
+						if (state.grid.inBounds(Position{i, j})) {
+							state.grid[Position{i, j}].setAssigned();
+						}
+					}
 				}
 				return {state};
 			} // TODO: solved() and Pips(SolverState) consturcter
