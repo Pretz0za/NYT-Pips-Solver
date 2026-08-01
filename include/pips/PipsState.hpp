@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cstdint>
 #include <cstdlib>
 #include <initializer_list>
 #include <iostream>
@@ -151,14 +152,24 @@ class Constraint {
   public:
 	Constraint(std::vector<Position> tiles);
 
-	std::vector<Position> getPositions() const;
+	const std::vector<Position> &getPositions() const;
 	virtual bool evaluate(std::span<int> values) const = 0;
-	virtual bool evaluate(std::span<Variable> values) const = 0;
 	virtual bool evaluate(std::span<Tile> values) const = 0;
 
 	virtual std::vector<int> impossibleValues(
 		const std::vector<std::shared_ptr<Domino>> &dominos) const = 0;
 	virtual bool isBroken(std::vector<int> values) const = 0;
+
+	// Sound per-value feasibility check used by the solver's GAC. Returns false
+	// only when `value` at scope index `positionIdx` definitely cannot be part
+	// of any assignment satisfying this constraint in isolation. valueMasks[i]
+	// is a uint8_t bitmask (bits 0..6) of the pip values still available at
+	// scope position i; the entry for positionIdx may be ignored. Default:
+	// always supported (no pruning).
+	virtual bool supportsValue(int value, std::size_t positionIdx,
+							   const std::vector<uint8_t> &valueMasks) const {
+		return true;
+	}
 
 	virtual ~Constraint() = default;
 };
@@ -167,11 +178,12 @@ class EqualConstraint : public Constraint {
   public:
 	EqualConstraint(std::vector<Position> tiles);
 	virtual bool evaluate(std::span<int> values) const override;
-	virtual bool evaluate(std::span<Variable> values) const override;
 	virtual bool evaluate(std::span<Tile> values) const override;
 	virtual std::vector<int> impossibleValues(
 		const std::vector<std::shared_ptr<Domino>> &dominos) const override;
 	virtual bool isBroken(std::vector<int> values) const override;
+	virtual bool supportsValue(int value, std::size_t positionIdx,
+							   const std::vector<uint8_t> &valueMasks) const override;
 	~EqualConstraint() = default;
 };
 
@@ -179,11 +191,12 @@ class UniqueConstraint : public Constraint {
   public:
 	UniqueConstraint(std::vector<Position> tiles);
 	virtual bool evaluate(std::span<int> values) const override;
-	virtual bool evaluate(std::span<Variable> values) const override;
 	virtual bool evaluate(std::span<Tile> values) const override;
 	virtual std::vector<int> impossibleValues(
 		const std::vector<std::shared_ptr<Domino>> &dominos) const override;
 	virtual bool isBroken(std::vector<int> values) const override;
+	virtual bool supportsValue(int value, std::size_t positionIdx,
+							   const std::vector<uint8_t> &valueMasks) const override;
 	~UniqueConstraint() = default;
 };
 
@@ -194,11 +207,12 @@ class LessThanConstraint : public Constraint {
 	LessThanConstraint(std::vector<Position> tiles, int target);
 	int getTarget() const;
 	virtual bool evaluate(std::span<int> values) const override;
-	virtual bool evaluate(std::span<Variable> values) const override;
 	virtual bool evaluate(std::span<Tile> values) const override;
 	virtual std::vector<int> impossibleValues(
 		const std::vector<std::shared_ptr<Domino>> &dominos) const override;
 	virtual bool isBroken(std::vector<int> values) const override;
+	virtual bool supportsValue(int value, std::size_t positionIdx,
+							   const std::vector<uint8_t> &valueMasks) const override;
 	~LessThanConstraint() = default;
 };
 
@@ -209,11 +223,12 @@ class GreaterThanConstraint : public Constraint {
 	GreaterThanConstraint(std::vector<Position> tiles, int target);
 	int getTarget() const;
 	virtual bool evaluate(std::span<int> values) const override;
-	virtual bool evaluate(std::span<Variable> values) const override;
 	virtual bool evaluate(std::span<Tile> values) const override;
 	virtual std::vector<int> impossibleValues(
 		const std::vector<std::shared_ptr<Domino>> &dominos) const override;
 	virtual bool isBroken(std::vector<int> values) const override;
+	virtual bool supportsValue(int value, std::size_t positionIdx,
+							   const std::vector<uint8_t> &valueMasks) const override;
 	~GreaterThanConstraint() = default;
 };
 
@@ -224,11 +239,12 @@ class ExactSumConstraint : public Constraint {
 	ExactSumConstraint(std::vector<Position> tiles, int target);
 	int getTarget() const;
 	virtual bool evaluate(std::span<int> values) const override;
-	virtual bool evaluate(std::span<Variable> values) const override;
 	virtual bool evaluate(std::span<Tile> values) const override;
 	virtual std::vector<int> impossibleValues(
 		const std::vector<std::shared_ptr<Domino>> &dominos) const override;
 	virtual bool isBroken(std::vector<int> values) const override;
+	virtual bool supportsValue(int value, std::size_t positionIdx,
+							   const std::vector<uint8_t> &valueMasks) const override;
 	~ExactSumConstraint() = default;
 };
 

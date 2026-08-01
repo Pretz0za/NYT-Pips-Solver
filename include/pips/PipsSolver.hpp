@@ -2,92 +2,106 @@
 #define PIPS_SOLVER_HPP
 
 #include "pips/PipsState.hpp"
-#include <algorithm>
+#include <array>
+#include <bit>
 #include <cassert>
 #include <chrono>
 #include <climits>
 #include <cstddef>
+#include <cstdint>
+#include <iostream>
 #include <memory>
 #include <optional>
 #include <queue>
-#include <stack>
-#include <stdexcept>
-#include <unordered_map>
-#include <unordered_set>
+#include <string>
 #include <vector>
 
-// Declarations
+// A solver tile is fully determined by (domino index d, side s, orientation o).
+// It is encoded as TileId = d*8 + s*4 + o, where o = (vertical << 1) | second
+// matches the Orientation pairs:
+//   Right{false,false}=0, Left{false,true}=1, Down{true,false}=2, Up{true,true}=3
+// complement(id) = id ^ 5 flips the side bit (bit 2) and orientation.second
+// (bit 0), matching Tile::getComplement.
+using TileId = uint16_t;
 
-class Variable {
-	std::unordered_set<Tile> domain;
-	bool assigned = false;
-	bool active;
+// A 256-bit fixed domain over TileIds (supports up to 32 dominos = 256 tiles).
+struct DomainMask {
+	std::array<uint64_t, 4> b{};
 
-  public:
-	Variable(bool inPlay = true);
-	Variable(Tile tile);
-	Variable &operator=(const Variable &other);
-	bool inPlay() const { return active; };
+	void set(int i) { b[i >> 6] |= (uint64_t{1} << (i & 63)); }
+	void clear(int i) { b[i >> 6] &= ~(uint64_t{1} << (i & 63)); }
+	bool test(int i) const { return (b[i >> 6] >> (i & 63)) & 1; }
 
-	void setAssigned();
-	bool isAssigned() const;
-	void insertInDomain(std::unordered_set<Tile> values);
-	void pruneDomain(const Tile &values);
-	void pushReduction(const std::unordered_set<Tile> &values);
-	void clearDomain() { domain.clear(); }
-	std::unordered_set<Tile> clearDomino(std::shared_ptr<Domino> domino);
-	std::unordered_set<Tile> getDomain() const { return domain; };
+	bool empty() const { return !(b[0] | b[1] | b[2] | b[3]); }
+	int size() const {
+		return std::popcount(b[0]) + std::popcount(b[1]) +
+			   std::popcount(b[2]) + std::popcount(b[3]);
+	}
 
-	void printTile(int x) const;
+	void andWith(const DomainMask &o) {
+		for (int i = 0; i < 4; i++)
+			b[i] &= o.b[i];
+	}
+	void orWith(const DomainMask &o) {
+		for (int i = 0; i < 4; i++)
+			b[i] |= o.b[i];
+	}
+	void andNot(const DomainMask &o) {
+		for (int i = 0; i < 4; i++)
+			b[i] &= ~o.b[i];
+	}
 
-	~Variable() = default;
+	bool operator==(const DomainMask &) const = default;
+
+	// Iterate over set bit indices (TileIds), lowest first.
+	template <class F> void forEach(F &&f) const {
+		for (int w = 0; w < 4; w++) {
+			uint64_t x = b[w];
+			while (x) {
+				int t = std::countr_zero(x);
+				f(w * 64 + t);
+				x &= x - 1;
+			}
+		}
+	}
+
+	// Returns first set bit index (only valid when size()==1 is intended).
+	int first() const {
+		for (int w = 0; w < 4; w++)
+			if (b[w])
+				return w * 64 + std::countr_zero(b[w]);
+		return -1;
+	}
 };
 
-struct Assignment {
-	Position position;
-	Tile value;
-};
+// Declarations ----------------------------------------------------------------
+
+template <int Width, int Height> class PipsAI;
 
 template <int Width, int Height> class SolverState {
-	Grid<Width, Height, Variable> grid;
+	static constexpr int N = Width * Height;
 
-	std::stack<std::unordered_map<Position, std::unordered_set<Tile>>>
-		reductions;
-	std::unordered_map<Position, std::unordered_set<Tile>> reductionMap;
-
-	void clearDominoFromDomains(std::shared_ptr<Domino> domino);
-	void clearDomain(const Position &position);
-
-	void pushReductionMap();
+	std::array<DomainMask, N> domain{};
+	std::array<bool, N> inPlay{};
+	std::array<bool, N> assigned{};
+	// Non-owning pointer to the solver's dominos, used only by printBoard to
+	// decode a TileId back into a Tile for drawing. Valid while the owning
+	// PipsAI is alive (true for the returned solution in main.cpp).
+	const std::vector<std::shared_ptr<Domino>> *dominos = nullptr;
 
   public:
-	SolverState(std::vector<Position> disabledTiles);
-	SolverState(const Pips<Width, Height> &startState);
-	SolverState(const SolverState<Width, Height> &other);
-	SolverState<Width, Height>
-	operator=(const SolverState<Width, Height> &other);
+	SolverState() = default;
+	SolverState(const std::vector<Position> &disabledTiles) {
+		inPlay.fill(true);
+		for (const auto &pos : disabledTiles) {
+			if (pos.row < 0 || pos.row >= Height || pos.col < 0 ||
+				pos.col >= Width)
+				throw std::runtime_error("Disabled tiles out of bounds");
+			inPlay[pos.row * Width + pos.col] = false;
+		}
+	}
 
-	void initializeDomains(const std::vector<std::shared_ptr<Domino>> &dominos);
-
-	void undoReduction();
 	void printBoard(const std::string &str) const;
-
-	bool isSolvable(const Constraint &constraint);
-	bool isImpossible(const Constraint &constraint) const;
-
-	void pruneVariableDomain(
-		Position position,
-		const Tile &removed); // For each value in removed, it removes the value
-							  // from the domain, and also the complement value
-							  // from the complement variable's domain.
-
-	std::unordered_map<Position, std::unordered_set<Tile>>
-	assignVariable(Position position, Tile value);
-
-	// Returns true if the last reduction cleared a variables domain
-	bool causedEmptyDomain() const;
-	bool isSolved() const;
-	Position MRV() const;
 
 	~SolverState() = default;
 
@@ -95,89 +109,139 @@ template <int Width, int Height> class SolverState {
 };
 
 template <int Width, int Height> class PipsAI {
+	static constexpr int N = Width * Height;
+
 	SolverState<Width, Height> state;
 	std::vector<std::shared_ptr<Constraint>> constraints;
 	std::vector<std::shared_ptr<Domino>> dominos;
-	std::stack<std::pair<SolverState<Width, Height>, Assignment>>
-		frontier; // State-Action pairs
 
-	bool solved() const;
+	// Precomputed tables (see TileId encoding above).
+	std::array<uint8_t, 256> valueOf{};   // pip value of each TileId
+	std::array<DomainMask, 32> dominoMask; // 8 TileIds owned by each domino
+	int nDominos = 0;
 
-	bool revise(Position position, const Constraint &constraint);
+	// Constraint scope cells (flat indices) and the GAC arc structures.
+	std::vector<std::vector<int>> scopeCells;    // per constraint
+	std::vector<int> arcConstraint;              // arc -> constraint index
+	std::vector<int> arcScopeIdx;                // arc -> scope index
+	std::vector<int> arcBase;                    // constraint -> first arc id
+	std::vector<std::vector<int>> cellConstraints; // cell -> constraint indices
+
+	// Trail for backtracking: OR each removed mask back to undo.
+	struct TrailEntry {
+		uint16_t cell;
+		DomainMask removed;
+	};
+	std::vector<TrailEntry> trail;
+	std::vector<uint16_t> assignTrail; // cells newly marked assigned
+
+	// Frontier of pending branches.
+	struct Branch {
+		uint16_t cell;
+		TileId value;
+		uint32_t trailMark;
+		uint32_t assignMark;
+	};
+	std::vector<Branch> frontier;
+
+	// --- geometry -----------------------------------------------------------
+	static int neighborOf(int cell, int o) {
+		switch (o) {
+		case 0:
+			return cell + 1; // Right (col+1)
+		case 1:
+			return cell - 1; // Left (col-1)
+		case 2:
+			return cell + Width; // Down (row+1)
+		default:
+			return cell - Width; // Up (row-1)
+		}
+	}
+
+	// --- trail helpers ------------------------------------------------------
+	// Remove `mask` (intersected with the live domain) from cell, recording it.
+	// Returns whether anything was removed.
+	bool removeBits(int cell, const DomainMask &mask) {
+		DomainMask actual = mask;
+		actual.andWith(state.domain[cell]);
+		if (actual.empty())
+			return false;
+		trail.push_back({static_cast<uint16_t>(cell), actual});
+		state.domain[cell].andNot(actual);
+		return true;
+	}
+
+	void markAssigned(int cell) {
+		if (!state.assigned[cell]) {
+			state.assigned[cell] = true;
+			assignTrail.push_back(static_cast<uint16_t>(cell));
+		}
+	}
+
+	void undoTo(uint32_t trailMark, uint32_t assignMark) {
+		while (trail.size() > trailMark) {
+			TrailEntry &e = trail.back();
+			state.domain[e.cell].orWith(e.removed);
+			trail.pop_back();
+		}
+		while (assignTrail.size() > assignMark) {
+			state.assigned[assignTrail.back()] = false;
+			assignTrail.pop_back();
+		}
+	}
+
+	// --- pip value mask of a cell's domain ---------------------------------
+	uint8_t valueMaskOf(int cell) const {
+		uint8_t m = 0;
+		state.domain[cell].forEach(
+			[&](int id) { m |= static_cast<uint8_t>(1u << valueOf[id]); });
+		return m;
+	}
+
+	// --- core solver steps --------------------------------------------------
+	void precompute();
+	void initializeDomains();
+	void impossibleValuesPass();
+
+	// Vacate `cell`: remove its whole domain and, for each tile it held, remove
+	// the complementary "spanning-into-cell" tile from the pointed neighbor.
+	// This is what prevents another domino from later overlapping this cell.
+	void vacateCell(int cell);
+
+	// Place domino tile `t` at `cell` (fixing cell and its partner). Records all
+	// changes on the trail. Returns false if the branch is dead (some in-play
+	// cell was emptied).
+	bool assignVariable(int cell, TileId t);
+
+	// GAC over all constraints. Prunes unsupported values from cell domains
+	// (and complements from neighbors), recording all changes on the trail.
+	// Returns false if some domain was emptied (dead branch).
 	bool GAC();
 
-	// TODO:
+	int MRV() const;
+	bool solved() const;
 
-	void pushState(
-		Assignment action); // Push a <state, assignment> i.e. state-action pair
-	bool popState();		// Pops the top pair, assigns the variable in state,
-					 // reduces direct domain conflicts, and sets state variable
+	void pushChild(int cell, TileId value, uint32_t tMark, uint32_t aMark) {
+		frontier.push_back({static_cast<uint16_t>(cell), value, tMark, aMark});
+	}
+	// Pop the next branch, restore to its mark, and apply its assignment.
+	// Skips dead branches. Returns false if the frontier is exhausted.
+	bool popState();
 
   public:
 	PipsAI(std::vector<Position> disabledTiles,
 		   std::vector<std::shared_ptr<Domino>> dominos,
-		   std::vector<std::shared_ptr<Constraint>> constraints);
-	PipsAI(const Pips<Width, Height> &startState);
+		   std::vector<std::shared_ptr<Constraint>> constraints)
+		: state{disabledTiles}, constraints{std::move(constraints)},
+		  dominos{std::move(dominos)} {
+		state.dominos = &this->dominos;
+		precompute();
+	}
+
 	std::optional<SolverState<Width, Height>> solve();
 };
 
-// Definitions
-
-template <int Width, int Height>
-void SolverState<Width, Height>::initializeDomains(
-	const std::vector<std::shared_ptr<Domino>> &dominos) {
-	std::pair<int, int> values;
-	for (int i = 0; i < Height; i++) {
-		for (int j = 0; j < Width; j++) {
-
-			if (!grid[{i, j}].inPlay())
-				continue;
-
-			if (j - 1 >= 0 && grid[{i, j - 1}].inPlay()) {
-				for (const auto &domino : dominos) {
-					values = domino->getValues();
-					grid[{i, j}].insertInDomain(
-						{Tile(true, domino, Orientation::Left)});
-					grid[{i, j}].insertInDomain(
-						{Tile(false, domino, Orientation::Left)});
-				}
-			}
-			if (j + 1 < Width && grid[{i, j + 1}].inPlay()) {
-				for (const auto &domino : dominos) {
-					values = domino->getValues();
-					grid[{i, j}].insertInDomain(
-						{Tile(true, domino, Orientation::Right)});
-					grid[{i, j}].insertInDomain(
-						{Tile(false, domino, Orientation::Right)});
-				}
-			}
-			if (i - 1 >= 0 && grid[{i - 1, j}].inPlay()) {
-				for (const auto &domino : dominos) {
-					values = domino->getValues();
-					grid[{i, j}].insertInDomain(
-						{Tile(true, domino, Orientation::Up)});
-					grid[{i, j}].insertInDomain(
-						{Tile(false, domino, Orientation::Up)});
-				}
-			}
-			if (i + 1 < Height && grid[{i + 1, j}].inPlay()) {
-				for (const auto &domino : dominos) {
-					values = domino->getValues();
-					grid[{i, j}].insertInDomain(
-						{Tile(true, domino, Orientation::Down)});
-					grid[{i, j}].insertInDomain(
-						{Tile(false, domino, Orientation::Down)});
-				}
-			}
-		}
-	}
-}
-
-template <int Width, int Height>
-void SolverState<Width, Height>::pushReductionMap() {
-	reductions.push(reductionMap);
-	reductionMap.clear();
-}
+// Definitions -----------------------------------------------------------------
 
 template <int Width, int Height>
 void SolverState<Width, Height>::printBoard(const std::string &str) const {
@@ -187,282 +251,229 @@ void SolverState<Width, Height>::printBoard(const std::string &str) const {
 	for (int i = 0; i < Height; i++, y += 4) {
 		x = 1;
 		for (int j = 0; j < Width; j++, x += 8) {
-			if (!grid[{i, j}].inPlay() || !grid[{i, j}].isAssigned())
+			int cell = i * Width + j;
+			if (!inPlay[cell] || !assigned[cell] || domain[cell].size() != 1)
 				continue;
-			Tile value = *grid[{i, j}].getDomain().begin();
+			TileId id = static_cast<TileId>(domain[cell].first());
+			int d = id >> 3;
+			bool side = (id >> 2) & 1;
+			int o = id & 3;
+			Tile value(side, (*dominos)[d],
+					   {static_cast<bool>(o >> 1), static_cast<bool>(o & 1)});
 			value.printTile(x, y - 1);
 		}
 	}
 	std::cout << '\n' << str << '\n';
 }
 
-template <int Width, int Height>
-void SolverState<Width, Height>::clearDomain(const Position &position) {
-	std::unordered_set<Tile> domain = grid[position].getDomain();
+template <int Width, int Height> void PipsAI<Width, Height>::precompute() {
+	nDominos = static_cast<int>(dominos.size());
+	assert(nDominos <= 32 && "solver supports up to 32 dominos");
 
-	for (const auto &value : domain) {
-		// Remove Complements
-		Position complementPosition =
-			grid.getOther(position, value.getOrientation());
-		grid[complementPosition].pruneDomain({value.getComplement()});
-		reductionMap[complementPosition].insert(value.getComplement());
+	for (int d = 0; d < nDominos; d++) {
+		dominoMask[d] = DomainMask{};
+		for (int s = 0; s < 2; s++) {
+			for (int o = 0; o < 4; o++) {
+				int id = d * 8 + s * 4 + o;
+				// side bit set => domino's first value, else second.
+				valueOf[id] = static_cast<uint8_t>(dominos[d]->getValue(s == 1));
+				dominoMask[d].set(id);
+			}
+		}
 	}
 
-	reductionMap[position].merge(domain);
-	grid[position].clearDomain(); // TODO: make this;
-}
-
-template <int Width, int Height>
-void SolverState<Width, Height>::clearDominoFromDomains(
-	std::shared_ptr<Domino> domino) {
-	for (int i = 0; i < Height; i++) {
-		for (int j = 0; j < Width; j++) {
-			reductionMap[{i, j}].merge(grid[{i, j}].clearDomino(domino));
+	// Constraint scope cells and GAC arc bookkeeping.
+	cellConstraints.assign(N, {});
+	scopeCells.assign(constraints.size(), {});
+	arcBase.assign(constraints.size(), 0);
+	int arc = 0;
+	for (std::size_t c = 0; c < constraints.size(); c++) {
+		arcBase[c] = arc;
+		const auto &positions = constraints[c]->getPositions();
+		scopeCells[c].reserve(positions.size());
+		for (const auto &p : positions) {
+			int cell = p.row * Width + p.col;
+			scopeCells[c].push_back(cell);
+			cellConstraints[cell].push_back(static_cast<int>(c));
+			arcConstraint.push_back(static_cast<int>(c));
+			arcScopeIdx.push_back(static_cast<int>(scopeCells[c].size() - 1));
+			arc++;
 		}
 	}
 }
 
 template <int Width, int Height>
-SolverState<Width, Height>::SolverState(std::vector<Position> disabledTiles)
-	: grid{disabledTiles} {}
-
-template <int Width, int Height>
-SolverState<Width, Height>::SolverState(const Pips<Width, Height> &startState)
-	: grid() {
+void PipsAI<Width, Height>::initializeDomains() {
+	// For each in-play cell, add both sides of every domino for each direction
+	// whose neighbor is also in play. Orientation ids: Left=1, Right=0, Up=3,
+	// Down=2.
+	auto inBoundsInPlay = [&](int r, int c) {
+		return r >= 0 && r < Height && c >= 0 && c < Width &&
+			   state.inPlay[r * Width + c];
+	};
 	for (int i = 0; i < Height; i++) {
 		for (int j = 0; j < Width; j++) {
-			grid[{i, j}] = Variable(startState[{i, j}]);
+			int cell = i * Width + j;
+			if (!state.inPlay[cell])
+				continue;
+			struct Dir {
+				bool ok;
+				int o;
+			};
+			Dir dirs[4] = {{inBoundsInPlay(i, j - 1), 1}, // Left
+						   {inBoundsInPlay(i, j + 1), 0}, // Right
+						   {inBoundsInPlay(i - 1, j), 3}, // Up
+						   {inBoundsInPlay(i + 1, j), 2}}; // Down
+			for (const Dir &dir : dirs) {
+				if (!dir.ok)
+					continue;
+				for (int d = 0; d < nDominos; d++) {
+					state.domain[cell].set(d * 8 + 0 * 4 + dir.o); // side 0
+					state.domain[cell].set(d * 8 + 1 * 4 + dir.o); // side 1
+				}
+			}
 		}
 	}
 }
 
 template <int Width, int Height>
-SolverState<Width, Height>::SolverState(const SolverState<Width, Height> &other)
-	: grid(other.grid) {}
+void PipsAI<Width, Height>::impossibleValuesPass() {
+	// Root-level pruning: remove constraint-impossible pip values (and their
+	// complements from neighbors) directly, without the trail.
+	for (const auto &constraint : constraints) {
+		std::vector<int> impossible = constraint->impossibleValues(dominos);
+		if (impossible.empty())
+			continue;
+		uint8_t impMask = 0;
+		for (int v : impossible)
+			if (v >= 0 && v <= 6)
+				impMask |= static_cast<uint8_t>(1u << v);
+
+		for (const auto &p : constraint->getPositions()) {
+			int cell = p.row * Width + p.col;
+			DomainMask rem;
+			state.domain[cell].forEach([&](int id) {
+				if (impMask & (1u << valueOf[id]))
+					rem.set(id);
+			});
+			// Remove complements from neighbors, then the values from the cell.
+			rem.forEach([&](int id) {
+				int nb = neighborOf(cell, id & 3);
+				state.domain[nb].clear(id ^ 5);
+			});
+			state.domain[cell].andNot(rem);
+		}
+	}
+}
 
 template <int Width, int Height>
-bool SolverState<Width, Height>::isSolved() const {
-	for (int i = 0; i < Height; i++) {
-		for (int j = 0; j < Width; j++) {
-			if (grid[{i, j}].inPlay() && grid[{i, j}].getDomain().size() > 1)
-				return false;
-		}
+void PipsAI<Width, Height>::vacateCell(int cell) {
+	DomainMask dc = state.domain[cell];
+	if (dc.empty())
+		return;
+	// For every tile held here, its complement (the spanning-into-cell tile)
+	// must be removed from the pointed neighbor. Accumulate per orientation.
+	DomainMask nbRem[4];
+	dc.forEach([&](int id) { nbRem[id & 3].set(id ^ 5); });
+	for (int o = 0; o < 4; o++) {
+		if (nbRem[o].empty())
+			continue;
+		int nb = neighborOf(cell, o);
+		removeBits(nb, nbRem[o]);
+	}
+	// Clear this cell's domain entirely (recorded so it can be restored).
+	removeBits(cell, dc);
+}
+
+template <int Width, int Height>
+bool PipsAI<Width, Height>::assignVariable(int cell, TileId t) {
+	int d = t >> 3;
+	TileId comp = static_cast<TileId>(t ^ 5);
+	int nb = neighborOf(cell, t & 3);
+
+	// 1. Domino exclusivity: remove domino d from every in-play cell.
+	for (int c = 0; c < N; c++) {
+		if (!state.inPlay[c])
+			continue;
+		removeBits(c, dominoMask[d]);
+	}
+
+	// 2. Vacate cell and its partner (prevents future overlaps into them).
+	vacateCell(cell);
+	vacateCell(nb);
+
+	// 3. Fix the placement.
+	state.domain[cell].set(t);
+	state.domain[nb].set(comp);
+	markAssigned(cell);
+	markAssigned(nb);
+
+	// 4. Dead if any in-play cell was emptied.
+	for (int c = 0; c < N; c++) {
+		if (state.inPlay[c] && state.domain[c].empty())
+			return false;
 	}
 	return true;
 }
 
-template <int Width, int Height>
-std::unordered_map<Position, std::unordered_set<Tile>>
-SolverState<Width, Height>::assignVariable(Position position, Tile value) {
-	if (!grid.inBounds(position))
-		throw std::runtime_error("Can't assign to out of bounds Variable");
-
-	Tile complement = value.getComplement();
-	Position complementPosition =
-		grid.getOther(position, value.getOrientation());
-
-	clearDominoFromDomains(value.getDomino()); // TODO: Make this;
-	clearDomain(position);					   // TODO: Make this;
-	clearDomain(complementPosition);
-
-	grid[position].insertInDomain({value});
-	grid[complementPosition].insertInDomain({complement});
-
-	pushReductionMap(); // TODO: Make this;
-	return reductions.top();
-}
-
-template <int Width, int Height>
-void SolverState<Width, Height>::pruneVariableDomain(Position position,
-													 const Tile &removed) {
-	grid[position].pruneDomain(removed);
-	grid[grid.getOther(position, removed.getOrientation())].pruneDomain(
-		removed.getComplement());
-}
-
-template <int Width, int Height>
-void SolverState<Width, Height>::undoReduction() {
-	for (const auto &pair : reductions.top()) {
-		grid[pair.first].insertInDomain(pair.second);
-	}
-	reductions.pop();
-}
-
-template <int Width, int Height>
-SolverState<Width, Height>
-SolverState<Width, Height>::operator=(const SolverState<Width, Height> &other) {
-	grid = other.grid;
-	return *this;
-}
-
-template <int Width, int Height>
-Position SolverState<Width, Height>::MRV() const {
-	// Returns the unassigned variable with the most constrained domain.
-	// --> Grid square with the minimum possible states after pruning.
-	Position minVar{-1, -1};
-	int minSize = INT_MAX;
-	int currSize;
-	for (int i = 0; i < Height; i++) {
-		for (int j = 0; j < Width; j++) {
-			if (!grid[{i, j}].inPlay() || grid[{i, j}].isAssigned())
-				continue;
-			currSize = grid[{i, j}].getDomain().size();
-			if (currSize < minSize) {
-				minSize = currSize;
-				minVar = Position{i, j};
-			}
-		}
-	}
-	return minVar;
-}
-
-template <int Width, int Height>
-PipsAI<Width, Height>::PipsAI(
-	std::vector<Position> disabledTiles,
-	std::vector<std::shared_ptr<Domino>> dominos,
-	std::vector<std::shared_ptr<Constraint>> constraints)
-	: dominos{dominos}, constraints{constraints}, state{disabledTiles},
-	  frontier{} {}
-
-template <int Width, int Height>
-PipsAI<Width, Height>::PipsAI(const Pips<Width, Height> &startState)
-	: state(startState), frontier{} {}
-
-template <int Width, int Height>
-bool SolverState<Width, Height>::causedEmptyDomain() const {
-	for (const auto &p : reductions.top()) {
-		if (!p.second.empty() && grid[p.first].getDomain().size() == 0)
-			return true;
-	}
-	return false;
-}
-
-template <int Width, int Height>
-bool PipsAI<Width, Height>::revise(Position position,
-								   const Constraint &constraint) {
-	std::unordered_set<Tile> domain = state.grid[position].getDomain();
-	bool revised = false;
-	if (domain.size() == 1)
-		return revised;
-
-	bool isSolvable, isBroken, isIncompatible;
-	for (const auto &value : domain) {
-
-		state.assignVariable(position, value);
-
-		isBroken = state.isImpossible(constraint);
-		if (!isBroken) {
-			isIncompatible = state.causedEmptyDomain();
-			if (!isIncompatible)
-				isSolvable = state.isSolvable(constraint);
-		}
-
-		state.undoReduction();
-
-		if (isBroken || isIncompatible || !isSolvable) {
-			state.pruneVariableDomain(position, value);
-			revised = true;
-		}
-	}
-
-	return revised;
-}
-
-template <int Width, int Height>
-bool SolverState<Width, Height>::isSolvable(const Constraint &constraint) {
-	Position choice{-1, -1};
-	auto positions = constraint.getPositions();
-
-	for (const auto &pos : positions) {
-		if (grid[pos].getDomain().size() == 0)
-			return false;
-		if (grid[pos].getDomain().size() > 1) {
-			choice = pos;
-		}
-	}
-
-	if (!grid.inBounds(choice)) {
-		std::vector<int> values;
-		values.reserve(positions.size());
-
-		for (const auto &pos : positions) {
-			values.push_back(grid[pos].getDomain().begin()->getValue());
-		}
-
-		return constraint.evaluate(values);
-	}
-
-	std::unordered_set<Tile> domain = grid[choice].getDomain();
-	bool broken, solved, incompatible;
-	for (const auto &value : domain) {
-		// TODO: if (!isImpossible && isSolvable) return true;  (Early out for
-		// cheaper computation)
-
-		assignVariable(choice, value);
-
-		broken = this->isImpossible(constraint);
-		if (!broken) {
-			incompatible = this->causedEmptyDomain();
-			if (!incompatible)
-				solved = this->isSolvable(constraint);
-		}
-
-		undoReduction();
-
-		if (!broken && !incompatible && solved)
-			return true;
-	}
-
-	return false;
-}
-
-template <int Width, int Height>
-bool SolverState<Width, Height>::isImpossible(
-	const Constraint &constraint) const {
-	std::vector<Position> positions = constraint.getPositions();
-	std::vector<int> assignedValues;
-	assignedValues.reserve(positions.size());
-	for (const auto &pos : positions) {
-		if (grid[pos].getDomain().size() == 1) {
-			assignedValues.push_back(grid[pos].getDomain().begin()->getValue());
-		}
-	}
-	return constraint.isBroken(assignedValues);
-}
-
 template <int Width, int Height> bool PipsAI<Width, Height>::GAC() {
-	std::queue<std::pair<std::shared_ptr<Constraint>, Position>>
-		queue{}; // TODO: Change to priority queue with |D(X)|
-	std::pair<std::shared_ptr<Constraint>, Position> cPair;
-	// Add every <C, X> pair where X in scope(C)
-	for (const auto &constraint : constraints) {
-		for (const auto &position : constraint->getPositions()) {
-			queue.emplace(constraint, position);
-		}
-	}
+	const int numArcs = static_cast<int>(arcConstraint.size());
+	std::vector<char> inQueue(numArcs, 1);
+	std::queue<int> q;
+	for (int a = 0; a < numArcs; a++)
+		q.push(a);
 
-	while (!queue.empty()) {
-		cPair = queue.front();
-		queue.pop();
+	while (!q.empty()) {
+		int a = q.front();
+		q.pop();
+		inQueue[a] = 0;
 
-		if (revise(cPair.second, *cPair.first)) {
+		int ci = arcConstraint[a];
+		int si = arcScopeIdx[a];
+		const std::vector<int> &cells = scopeCells[ci];
+		int cell = cells[si];
+		const Constraint &constraint = *constraints[ci];
 
-			if (state.grid[cPair.second].getDomain().size() == 0) {
-				return false; // unsolvable
+		// Build pip-value masks for the whole scope.
+		std::vector<uint8_t> masks(cells.size());
+		for (std::size_t i = 0; i < cells.size(); i++)
+			masks[i] = valueMaskOf(cells[i]);
+
+		// Find unsupported tiles in this cell's domain.
+		DomainMask cellRem;
+		DomainMask nbRem[4];
+		state.domain[cell].forEach([&](int id) {
+			int v = valueOf[id];
+			if (!constraint.supportsValue(v, si, masks)) {
+				cellRem.set(id);
+				nbRem[id & 3].set(id ^ 5);
 			}
+		});
 
-			// Add every <C`, Z> pair where C` != C && X in scope(C`) && X != Z
-			for (const auto &constraint : constraints) {
-				if (constraint == cPair.first)
+		if (cellRem.empty())
+			continue; // unchanged
+
+		removeBits(cell, cellRem);
+		for (int o = 0; o < 4; o++) {
+			if (!nbRem[o].empty())
+				removeBits(neighborOf(cell, o), nbRem[o]);
+		}
+
+		if (state.domain[cell].empty())
+			return false; // dead
+
+		// Re-enqueue arcs (C', Z) for other constraints containing `cell`.
+		for (int cj : cellConstraints[cell]) {
+			if (cj == ci)
+				continue;
+			const std::vector<int> &ocells = scopeCells[cj];
+			for (std::size_t zi = 0; zi < ocells.size(); zi++) {
+				if (ocells[zi] == cell)
 					continue;
-				auto positions = constraint->getPositions();
-				if (std::find(positions.begin(), positions.end(),
-							  cPair.second) != positions.end()) {
-					for (const auto &position : positions) {
-						if (position == cPair.second)
-							continue;
-						queue.emplace(constraint, position);
-					}
+				int arc = arcBase[cj] + static_cast<int>(zi);
+				if (!inQueue[arc]) {
+					inQueue[arc] = 1;
+					q.push(arc);
 				}
 			}
 		}
@@ -470,57 +481,55 @@ template <int Width, int Height> bool PipsAI<Width, Height>::GAC() {
 	return true;
 }
 
-template <int Width, int Height> bool PipsAI<Width, Height>::solved() const {
-
-	for (int i = 0; i < Height; i++) {
-		for (int j = 0; j < Width; j++) {
-			if (!state.grid[{i, j}].inPlay())
-				continue;
-			if (state.grid[{i, j}].getDomain().size() != 1 ||
-				!state.grid[{i, j}].isAssigned())
-				return false;
+template <int Width, int Height> int PipsAI<Width, Height>::MRV() const {
+	int minCell = -1;
+	int minSize = INT_MAX;
+	for (int c = 0; c < N; c++) {
+		if (!state.inPlay[c] || state.assigned[c])
+			continue;
+		int sz = state.domain[c].size();
+		if (sz < minSize) {
+			minSize = sz;
+			minCell = c;
 		}
 	}
+	return minCell;
+}
 
-	for (const auto &constraint : constraints) {
-		std::vector<Position> positions = constraint->getPositions();
-		std::vector<Variable> variables;
-		variables.reserve(positions.size());
-		for (const auto &pos : positions) {
-			variables.push_back(state.grid[pos]);
-		}
-		if (!constraint->evaluate(variables))
+template <int Width, int Height> bool PipsAI<Width, Height>::solved() const {
+	// Full coverage: every in-play cell fixed and assigned.
+	for (int c = 0; c < N; c++) {
+		if (!state.inPlay[c])
+			continue;
+		if (state.domain[c].size() != 1 || !state.assigned[c])
 			return false;
 	}
-
+	// Every constraint satisfied over the final pip values.
+	for (const auto &constraint : constraints) {
+		const std::vector<Position> &positions = constraint->getPositions();
+		std::vector<int> values;
+		values.reserve(positions.size());
+		for (const auto &p : positions) {
+			int cell = p.row * Width + p.col;
+			TileId id = static_cast<TileId>(state.domain[cell].first());
+			values.push_back(valueOf[id]);
+		}
+		if (!constraint->evaluate(std::span<int>(values)))
+			return false;
+	}
 	return true;
 }
 
-template <int Width, int Height>
-void PipsAI<Width, Height>::pushState(Assignment action) {
-	frontier.emplace(state, action);
-}
-
 template <int Width, int Height> bool PipsAI<Width, Height>::popState() {
-	std::pair<SolverState<Width, Height>, Assignment> pair = frontier.top();
-	frontier.pop();
-	state = pair.first;
-	bool valid = true;
-	if (pair.second.position.row != -1 && pair.second.position.col != -1) {
-		state.assignVariable(pair.second.position, pair.second.value);
-		state.grid[pair.second.position].setAssigned();
-		state
-			.grid[state.grid.getOther(pair.second.position,
-									  pair.second.value.getOrientation())]
-			.setAssigned();
-		valid = !state.causedEmptyDomain();
+	while (!frontier.empty()) {
+		Branch b = frontier.back();
+		frontier.pop_back();
+		undoTo(b.trailMark, b.assignMark);
+		if (assignVariable(b.cell, b.value))
+			return true;
+		// dead branch: try the next one.
 	}
-
-	if (!valid) {
-		if (!frontier.empty())
-			return popState();
-	}
-	return valid;
+	return false;
 }
 
 template <int Width, int Height>
@@ -528,43 +537,34 @@ std::optional<SolverState<Width, Height>> PipsAI<Width, Height>::solve() {
 
 	auto t = std::chrono::high_resolution_clock::now();
 	std::cout << "initializing domains and search tree...\n";
-	state.initializeDomains(dominos);
-	auto t1 = std::chrono::duration_cast<std::chrono::milliseconds>(
+	initializeDomains();
+	auto t1 = std::chrono::duration_cast<std::chrono::microseconds>(
 		std::chrono::high_resolution_clock::now() - t);
 
 	t = std::chrono::high_resolution_clock::now();
 	std::cout << "removing constraint breaking values and choosing where to "
 				 "being search: \n";
-	for (const auto &constraint : constraints) {
-		std::vector<int> impossible = constraint->impossibleValues(dominos);
-		for (const auto &position : constraint->getPositions()) {
-			for (const Tile &value : state.grid[position].getDomain()) {
-				if (std::find(impossible.begin(), impossible.end(),
-							  value.getValue()) != impossible.end()) {
-					state.pruneVariableDomain(position, value);
-				}
-			}
+	impossibleValuesPass();
+	{
+		int pos = MRV();
+		if (pos != -1) {
+			uint32_t tMark = static_cast<uint32_t>(trail.size());
+			uint32_t aMark = static_cast<uint32_t>(assignTrail.size());
+			DomainMask copy = state.domain[pos];
+			copy.forEach(
+				[&](int id) { pushChild(pos, static_cast<TileId>(id), tMark, aMark); });
 		}
 	}
-	Position pos = state.MRV();
-	if (pos.row != -1 && pos.col != -1) {
-		for (const auto &value : state.grid[pos].getDomain()) {
-			pushState({pos, value});
-		}
-	}
-	auto t2 = std::chrono::duration_cast<std::chrono::milliseconds>(
+	auto t2 = std::chrono::duration_cast<std::chrono::microseconds>(
 		std::chrono::high_resolution_clock::now() - t);
 
-	std::chrono::milliseconds t3(0);
-	std::vector<std::chrono::milliseconds> times{};
+	std::chrono::microseconds t3(0);
+	std::vector<std::chrono::microseconds> times{};
 	std::cout << "beginning search..." << std::endl;
 	while (!frontier.empty()) {
-		// Pop <S, A> and set new state S` <- T(S, A). Return false if there is
-		// no valid S' in frontier.
 		state.printBoard("");
 		auto t = std::chrono::high_resolution_clock::now();
-		if (popState() &&
-			GAC()) { // Run General Arc Consistency returns false if unsolvable
+		if (popState() && GAC()) {
 
 			if (solved()) {
 				int i = 1;
@@ -575,27 +575,20 @@ std::optional<SolverState<Width, Height>> PipsAI<Width, Height>::solve() {
 					i++;
 				}
 				std::cout << "total solve time: " << t1 + t2 + t3 << '\n';
-				for (int i = 0; i < Height; i++) {
-					for (int j = 0; j < Width; j++) {
-						if (state.grid.inBounds(Position{i, j})) {
-							state.grid[Position{i, j}].setAssigned();
-						}
-					}
-				}
 				return {state};
-			} // TODO: solved() and Pips(SolverState) consturcter
+			}
 
-			Position pos = state.MRV();
-			// If MRV returns (-1, -1) it means |X| <= 1 for all X. But we have
-			// !solved() -> something went very wrong because 0-size domains
-			// should never exists.
-			if (pos.row != -1 && pos.col != -1) {
-				for (const auto &value : state.grid[pos].getDomain()) {
-					pushState({pos, value});
-				}
+			int pos = MRV();
+			if (pos != -1) {
+				uint32_t tMark = static_cast<uint32_t>(trail.size());
+				uint32_t aMark = static_cast<uint32_t>(assignTrail.size());
+				DomainMask copy = state.domain[pos];
+				copy.forEach([&](int id) {
+					pushChild(pos, static_cast<TileId>(id), tMark, aMark);
+				});
 			}
 		}
-		times.push_back(std::chrono::duration_cast<std::chrono::milliseconds>(
+		times.push_back(std::chrono::duration_cast<std::chrono::microseconds>(
 			std::chrono::high_resolution_clock::now() - t));
 	}
 

@@ -1,13 +1,13 @@
 #include "pips/PipsState.hpp"
 #include "helpers.hpp"
-#include "pips/PipsSolver.hpp"
 #include <algorithm>
+#include <bit>
+#include <cstdint>
 #include <cstdlib>
 #include <map>
 #include <memory>
 #include <numeric>
 #include <set>
-#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -288,7 +288,9 @@ void Tile::printTile(int x, int y) const {
 
 Constraint::Constraint(std::vector<Position> tiles)
 	: positions(std::move(tiles)) {}
-std::vector<Position> Constraint::getPositions() const { return positions; }
+const std::vector<Position> &Constraint::getPositions() const {
+	return positions;
+}
 bool Constraint::evaluate(std::span<int> values) const { return 0; }
 
 EqualConstraint::EqualConstraint(std::vector<Position> tiles)
@@ -332,22 +334,6 @@ bool EqualConstraint::evaluate(std::span<Tile> values) const {
 	}
 	return true;
 }
-bool EqualConstraint::evaluate(std::span<Variable> values) const {
-	if (values.empty())
-		return true;
-	const auto first = values[0].getDomain().begin()->getValue();
-	int count = 0;
-	for (const auto &curr : values) {
-
-		if (curr.getDomain().size() != 1)
-			return false;
-
-		if (curr.getDomain().begin()->getValue() != first)
-			return false;
-	}
-	return true;
-}
-
 bool EqualConstraint::isBroken(std::vector<int> values) const {
 	if (values.empty())
 		return false;
@@ -380,19 +366,6 @@ bool UniqueConstraint::evaluate(std::span<Tile> values) const {
 	return true;
 }
 
-bool UniqueConstraint::evaluate(std::span<Variable> values) const {
-	std::set<int> seen{};
-	for (const auto &val : values) {
-		if (val.getDomain().size() != 1)
-			return false;
-
-		if (seen.find(val.getDomain().begin()->getValue()) != seen.end())
-			return false;
-		seen.insert(val.getDomain().begin()->getValue());
-	}
-	return true;
-}
-
 bool UniqueConstraint::isBroken(std::vector<int> values) const {
 	std::set<int> seen;
 	for (int val : values) {
@@ -421,16 +394,6 @@ bool LessThanConstraint::evaluate(std::span<Tile> values) const {
 		sum += val.getValue();
 	}
 
-	return (sum < target);
-}
-
-bool LessThanConstraint::evaluate(std::span<Variable> values) const {
-	int sum = 0;
-	for (const auto &val : values) {
-		if (val.getDomain().size() != 1)
-			return false;
-		sum += val.getDomain().begin()->getValue();
-	}
 	return (sum < target);
 }
 
@@ -476,16 +439,6 @@ bool GreaterThanConstraint::evaluate(std::span<Tile> values) const {
 	return (sum > target);
 }
 
-bool GreaterThanConstraint::evaluate(std::span<Variable> values) const {
-	int sum = 0;
-	for (const auto &val : values) {
-		if (val.getDomain().size() != 1)
-			return false;
-		sum += val.getDomain().begin()->getValue();
-	}
-	return (sum > target);
-}
-
 int GreaterThanConstraint::getTarget() const { return target; }
 
 bool GreaterThanConstraint::isBroken(std::vector<int> values) const {
@@ -518,16 +471,6 @@ bool ExactSumConstraint::evaluate(std::span<Tile> values) const {
 	return (sum == target);
 }
 
-bool ExactSumConstraint::evaluate(std::span<Variable> values) const {
-	int sum = 0;
-	for (const auto &val : values) {
-		if (val.getDomain().size() != 1)
-			return false;
-		sum += val.getDomain().begin()->getValue();
-	}
-	return (sum == target);
-}
-
 int ExactSumConstraint::getTarget() const { return target; }
 
 bool ExactSumConstraint::isBroken(std::vector<int> values) const {
@@ -543,6 +486,106 @@ std::vector<int> ExactSumConstraint::impossibleValues(
 			output.push_back(i);
 		}
 	return output;
+}
+
+// supportsValue implementations ----------------------------------------------
+//
+// valueMasks[i] holds, for scope position i, a uint8_t bitmask over pip values
+// 0..6 of the values still available in that cell's domain. Each check below is
+// SOUND: it returns false only when `value` at `positionIdx` cannot participate
+// in ANY assignment satisfying the constraint in isolation.
+
+namespace {
+// Lowest pip value present in a (non-zero) mask.
+inline int minVal(uint8_t m) { return std::countr_zero(m); }
+// Highest pip value present in a (non-zero) mask.
+inline int maxVal(uint8_t m) { return 7 - std::countl_zero(m); }
+} // namespace
+
+bool ExactSumConstraint::supportsValue(
+	int value, std::size_t positionIdx,
+	const std::vector<uint8_t> &valueMasks) const {
+	int sumMin = 0, sumMax = 0;
+	for (std::size_t i = 0; i < valueMasks.size(); i++) {
+		if (i == positionIdx)
+			continue;
+		if (valueMasks[i] == 0)
+			return false; // an other cell has no possible value
+		sumMin += minVal(valueMasks[i]);
+		sumMax += maxVal(valueMasks[i]);
+	}
+	return (sumMin + value <= target) && (sumMax + value >= target);
+}
+
+bool LessThanConstraint::supportsValue(
+	int value, std::size_t positionIdx,
+	const std::vector<uint8_t> &valueMasks) const {
+	int sumMin = 0;
+	for (std::size_t i = 0; i < valueMasks.size(); i++) {
+		if (i == positionIdx)
+			continue;
+		if (valueMasks[i] == 0)
+			return false;
+		sumMin += minVal(valueMasks[i]);
+	}
+	return value + sumMin < target;
+}
+
+bool GreaterThanConstraint::supportsValue(
+	int value, std::size_t positionIdx,
+	const std::vector<uint8_t> &valueMasks) const {
+	int sumMax = 0;
+	for (std::size_t i = 0; i < valueMasks.size(); i++) {
+		if (i == positionIdx)
+			continue;
+		if (valueMasks[i] == 0)
+			return false;
+		sumMax += maxVal(valueMasks[i]);
+	}
+	return value + sumMax > target;
+}
+
+bool EqualConstraint::supportsValue(
+	int value, std::size_t positionIdx,
+	const std::vector<uint8_t> &valueMasks) const {
+	const uint8_t bit = static_cast<uint8_t>(1u << value);
+	for (std::size_t i = 0; i < valueMasks.size(); i++) {
+		if (i == positionIdx)
+			continue;
+		if (!(valueMasks[i] & bit))
+			return false; // some other cell cannot take `value`
+	}
+	return true;
+}
+
+bool UniqueConstraint::supportsValue(
+	int value, std::size_t positionIdx,
+	const std::vector<uint8_t> &valueMasks) const {
+	// After assigning `value` to positionIdx, the remaining cells must take
+	// pairwise-distinct values, none equal to `value`. Check Hall's condition
+	// over all subsets of the other cells.
+	const uint8_t remove = static_cast<uint8_t>(~(1u << value));
+	std::vector<uint8_t> others;
+	others.reserve(valueMasks.size());
+	for (std::size_t i = 0; i < valueMasks.size(); i++) {
+		if (i == positionIdx)
+			continue;
+		others.push_back(static_cast<uint8_t>(valueMasks[i] & remove));
+	}
+	const int k = static_cast<int>(others.size());
+	for (int subset = 1; subset < (1 << k); subset++) {
+		uint8_t un = 0;
+		int count = 0;
+		for (int i = 0; i < k; i++) {
+			if (subset & (1 << i)) {
+				un |= others[i];
+				count++;
+			}
+		}
+		if (std::popcount(un) < count)
+			return false; // Hall violated: fewer values than cells
+	}
+	return true;
 }
 
 // End Constraint Classes
